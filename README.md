@@ -22,7 +22,8 @@ Works with Claude Code, Codex and the other agents the [skills CLI](https://skil
 
 `skills/golden-rule/gate.ts` is a `PreToolUse` hook that refuses a plan with no `## Golden rule plan` section, a
 `gh pr merge` without a passing verdict of the PR's head, and a push of code to the default branch. It needs
-[bun](https://bun.sh). For Claude Code, add to `~/.claude/settings.json`:
+[bun](https://bun.sh). For Claude Code, add to `~/.claude/settings.json`, with `bun` replaced by the output of
+`which bun` (agents often run without `~/.bun/bin` on their PATH, and a hook that cannot start lets everything through):
 
 ```json
 {

@@ -127,3 +127,23 @@ test("a plan passes only with a golden-rule plan section", () => {
   expect(plan("# Fix copy\n### Golden-rule plan\nn/a: copy only")).toBe(0);
   expect(plan("# Add X\n\nSteps, with the golden rule plan in mind.")).toBe(2);
 });
+
+test("as git's pre-push hook (any harness): code to main is refused, data, tags and branches pass", () => {
+  const repo = join(root, "hooked");
+  sh(root, "git clone -q origin.git hooked");
+  const hook = `-c hook.gate.event=pre-push -c hook.gate.command='bun ${GATE} pre-push'`;
+  const push = (args: string) => Bun.spawnSync(["sh", "-c", `git ${hook} push -q ${args}`], { cwd: repo, env: { HOME: process.env.HOME, PATH: process.env.PATH } }).exitCode;
+  const commit = (file: string) => sh(repo, `mkdir -p "$(dirname ${file})" && echo x >> ${file} && git add ${file} && git -c user.name=t -c user.email=t@t commit -q -m ${file}`);
+  commit("docs/recap/2026-10-29.json");
+  expect(push("origin main")).toBe(0);
+  commit("app.ts");
+  expect(push("origin main")).not.toBe(0);
+  expect(push("origin HEAD:refs/heads/side")).toBe(0);
+  sh(repo, "git tag main-tag");
+  expect(push("origin main-tag")).toBe(0);
+  // An unnamed push (a URL) still knows main; a new main on an empty remote is checked from what no remote has.
+  expect(push(`${join(root, "origin.git")} main`)).not.toBe(0);
+  sh(root, "git init -q --bare -b main empty.git");
+  sh(repo, `git remote add empty ${join(root, "empty.git")}`);
+  expect(push("empty main")).not.toBe(0);
+});

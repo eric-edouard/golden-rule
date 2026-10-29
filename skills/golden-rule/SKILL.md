@@ -74,7 +74,10 @@ things, a name that no longer says what the thing does. Treat a naming problem a
 ## The gate
 
 `gate.ts` (tests in `gate.test.ts`) is a `PreToolUse` hook for Claude Code (`~/.claude/settings.json`, matcher
-`Bash|ExitPlanMode`) and Codex (`hooks.json` in `$CODEX_HOME`, else `~/.codex`), registered as the README shows. It refuses:
+`Bash|ExitPlanMode`) and Codex (`hooks.json` in `$CODEX_HOME`, else `~/.codex`), registered as the README shows, and,
+as `gate.ts pre-push`, git's pre-push hook for every repo on the machine, whatever harness pushes (a global config hook:
+`git config --global hook.golden-rule.event pre-push` and `hook.golden-rule.command` running it with bun's full path;
+it runs beside a repo's own pre-push hook). It refuses:
 
 - a plan (Claude's ExitPlanMode; Codex has no plan tool) with no `## Golden rule plan` section.
 - `gh pr merge` unless the PR description has `## Golden rule verdict` with a `Verdict:` other than "rework needed" and a
@@ -91,4 +94,6 @@ tags pass too.
 
 It sees commands inside `sh -c`/`bash -lc` (how Codex runs them) and skips heredoc bodies. It fails closed: if it
 cannot check, it refuses. It stops the ordinary ways of merging, not a determined bypass (subshells, aliases, curl):
-the user can always merge or push themselves, and jobs running outside the agents are not affected.
+the user can always merge themselves. The pre-push hook gates his own pushes of code to the default branch too, and
+any harness's; `git push --no-verify` or `-c core.hooksPath=` skips it, and a merge is checked only by the tool hook
+(it happens on GitHub, where no git hook runs).

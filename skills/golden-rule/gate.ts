@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-// The golden-rule gate: a PreToolUse hook for Claude Code and Codex (SKILL.md, "The gate"). It reads the tool call on
+// The golden-rule gate: a PreToolUse hook for Claude Code and Codex, and (`gate.ts pre-push`) git's pre-push hook for any
+// harness (SKILL.md, "The gate"). As a tool hook it reads the tool call on
 // stdin and refuses (exit 2, the reason on stderr) a plan with no golden-rule plan section, a merge whose PR carries no
 // passing golden-rule verdict of its current head, and a push of code to a repository's default branch (a data-only
 // push, a job's report or log, goes through). Every other call passes untouched. Parsing shell text cannot catch every bypass; it stops the ordinary ways of merging.
@@ -100,9 +101,9 @@ function program(all: string[]) {
   return w.slice(i);
 }
 
-/** The default branch of the repo at `dir` (origin's HEAD), or main and master when it cannot be read. */
-function defaults(dir: string) {
-  const head = run(dir, ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
+/** The default branch of the repo at `dir` (the remote's HEAD), or main and master when it cannot be read. */
+function defaults(dir: string, remote = "origin") {
+  const head = run(dir, ["git", "symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`]);
   return head ? [head.replace(/^[^/]+\//, "")] : ["main", "master"];
 }
 
@@ -117,9 +118,9 @@ const INSTRUCTIONS = /(^|\/)(AGENTS|CLAUDE|SKILL)\.md$|(^|\/)(prompts|\.claude|\
 export const isData = (path: string) =>
   !INSTRUCTIONS.test(path) && (DOC.test(path) || (DATA_DIR.test(path) && !SCRIPT.test(path)));
 
-/** The files the commits of `src` not yet on origin change that are not data. */
-function codeIn(dir: string, src: string) {
-  const files = run(dir, ["git", "log", "--format=", "--name-only", src, "--not", "--remotes=origin"]);
+/** The files the commits of `range` (by default those of `src` not yet on origin) change that are not data. */
+function codeIn(dir: string, src: string, range = [src, "--not", "--remotes=origin"]) {
+  const files = run(dir, ["git", "log", "--format=", "--name-only", ...range]);
   if (files === null) {
     return ["(could not list the commits being pushed)"];
   }
@@ -151,12 +152,34 @@ function checkPush(dir: string, args: string[]) {
       continue;
     }
     // A data-only push (a job's report, log or recap) goes straight to the default branch; code goes through a PR.
-    const code = codeIn(dir, from === "" || refspecs.length === 0 ? "HEAD" : from);
-    if (code.length > 0) {
-      deny(
-        `pushing code to ${branch}, the default branch, is not allowed (${code.slice(0, 5).join(", ")}${code.length > 5 ? ", …" : ""}). Push a branch, open a PR, run golden-rule-verdict, then merge with gh pr merge. Docs, memory and data (not agent instructions) may go straight to ${branch}.`
-      );
+    refuseCode(branch, codeIn(dir, from === "" || refspecs.length === 0 ? "HEAD" : from));
+  }
+}
+
+function refuseCode(branch: string, code: string[]) {
+  if (code.length > 0) {
+    deny(
+      `pushing code to ${branch}, the default branch, is not allowed (${code.slice(0, 5).join(", ")}${code.length > 5 ? ", …" : ""}). Push a branch, open a PR, run golden-rule-verdict, then merge with gh pr merge. Docs, memory and data (not agent instructions) may go straight to ${branch}.`
+    );
+  }
+}
+
+/**
+ * git's pre-push hook, whatever harness pushes: `remote` is its first argument (a name, or a URL for an unnamed push),
+ * `lines` its stdin, `<local ref> <local sha> <remote ref> <remote sha>` per ref. Code to the default branch is refused as
+ * `checkPush` refuses it; tags, deletions and other branches pass.
+ */
+export function checkPrePush(dir: string, remote: string, lines: string) {
+  const named = !/[/:]/.test(remote);
+  const protectedBranches = defaults(dir, named ? remote : "origin");
+  for (const line of lines.split("\n").filter(Boolean)) {
+    const [, local = "", ref = "", remoteSha = ""] = line.split(" ");
+    const branch = ref.replace(/^refs\/heads\//, "");
+    if (/^0+$/.test(local) || branch === ref || !protectedBranches.includes(branch)) {
+      continue;
     }
+    const range = /^0+$/.test(remoteSha) ? [local, "--not", named ? `--remotes=${remote}` : "--remotes"] : [`${remoteSha}..${local}`];
+    refuseCode(branch, codeIn(dir, local, range));
   }
 }
 
@@ -290,7 +313,13 @@ function check(script: string, from: string) {
   }
 }
 
-if (import.meta.main) {
+if (import.meta.main && process.argv[2] === "pre-push") {
+  try {
+    checkPrePush(process.cwd(), process.argv[3] ?? "origin", await Bun.stdin.text());
+  } catch (e) {
+    deny(`could not check this push (${(e as Error).message}).`);
+  }
+} else if (import.meta.main) {
   try {
     const input = JSON.parse((await Bun.stdin.text()) || "{}");
     if (input.tool_name === "ExitPlanMode") {

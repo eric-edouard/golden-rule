@@ -141,4 +141,9 @@ test("as git's pre-push hook (any harness): code to main is refused, data, tags 
   expect(push("origin HEAD:refs/heads/side")).toBe(0);
   sh(repo, "git tag main-tag");
   expect(push("origin main-tag")).toBe(0);
+  // An unnamed push (a URL) still knows main; a new main on an empty remote is checked from what no remote has.
+  expect(push(`${join(root, "origin.git")} main`)).not.toBe(0);
+  sh(root, "git init -q --bare -b main empty.git");
+  sh(repo, `git remote add empty ${join(root, "empty.git")}`);
+  expect(push("empty main")).not.toBe(0);
 });

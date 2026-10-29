@@ -43,7 +43,8 @@ description: >
 
    "rework needed" cannot merge. "debt added" can, only when each item is a tracked rework or kept on purpose.
 6. **Report to the user in this order:** the verdict, the reworks (as tasks or PRs ready to start), the net lines,
-   and only then the merge question.
+   and only then the merge: merge it yourself when the verdict passes, unless the user's or the repo's rules ask for
+   their OK first; then ask.
 
 ## The reviewer's prompt
 

@@ -4,6 +4,7 @@
 // stdin and refuses (exit 2, the reason on stderr) a plan with no golden-rule plan section, a merge whose PR carries no
 // passing golden-rule verdict of its current head, and a push of code to a repository's default branch (a data-only
 // push, a job's report or log, goes through). Every other call passes untouched. Parsing shell text cannot catch every bypass; it stops the ordinary ways of merging.
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 /** A command's output, or null when it fails or cannot start (e.g. a folder an earlier part of the command creates). */
@@ -109,14 +110,15 @@ function defaults(dir: string, remote = "origin") {
 
 /**
  * Not functional code, so not gated: documentation, memory and data (what routines add: notes, recaps, logs, ledgers).
- * Agent instructions are functional (they steer agents), so they stay gated wherever they live.
+ * Agent instructions are functional (they steer agents), so they stay gated wherever they live. A repository holding
+ * only data (a `.data-repo` file at its root) counts every non-script file as data, wherever it lives.
  */
 const DOC = /\.(md|mdx|txt|csv|jsonl|log)$/;
 const DATA_DIR = /^(docs|memory|data|reports)\//;
 const SCRIPT = /\.(ts|tsx|js|jsx|mjs|cjs|py|sh|rb|go|rs|swift|kt|sql)$/;
 const INSTRUCTIONS = /(^|\/)(AGENTS|CLAUDE|SKILL)\.md$|(^|\/)(prompts|\.claude|\.agents|\.cursor)\/|(^|\/)docs\/agents\//;
-export const isData = (path: string) =>
-  !INSTRUCTIONS.test(path) && (DOC.test(path) || (DATA_DIR.test(path) && !SCRIPT.test(path)));
+export const isData = (path: string, dataRepo = false) =>
+  !INSTRUCTIONS.test(path) && (DOC.test(path) || ((dataRepo || DATA_DIR.test(path)) && !SCRIPT.test(path)));
 
 /** The files the commits of `range` (by default those of `src` not yet on origin) change that are not data. */
 function codeIn(dir: string, src: string, range = [src, "--not", "--remotes=origin"]) {
@@ -124,7 +126,9 @@ function codeIn(dir: string, src: string, range = [src, "--not", "--remotes=orig
   if (files === null) {
     return ["(could not list the commits being pushed)"];
   }
-  return [...new Set(files.split("\n").filter(Boolean))].filter((f) => !isData(f));
+  const top = run(dir, ["git", "rev-parse", "--show-toplevel"]);
+  const dataRepo = !!top && existsSync(`${top}/.data-repo`);
+  return [...new Set(files.split("\n").filter(Boolean))].filter((f) => !isData(f, dataRepo));
 }
 
 function checkPush(dir: string, args: string[]) {

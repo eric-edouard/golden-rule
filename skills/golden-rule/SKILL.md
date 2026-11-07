@@ -89,7 +89,8 @@ it runs beside a repo's own pre-push hook). It refuses:
 
 Docs, memory and data are never gated: any `.md`, `.txt`, `.csv`, `.jsonl` or `.log` file, and any non-script file under
 `docs/`, `memory/`, `data/` or `reports/`, except agent instructions (`AGENTS.md`, `CLAUDE.md`, `SKILL.md`, `prompts/`,
-`.claude/`, `.agents/`, `.cursor/`, `docs/agents/`). A push or a PR that only changes those goes through. Dry runs and
+`.claude/`, `.agents/`, `.cursor/`, `docs/agents/`). A repository that holds only data marks itself with a `.data-repo`
+file at its root: there every non-script file is data, wherever it lives. A push or a PR that only changes those goes through. Dry runs and
 tags pass too.
 
 It sees commands inside `sh -c`/`bash -lc` (how Codex runs them) and skips heredoc bodies. It fails closed: if it

@@ -98,6 +98,8 @@ test("docs, memory and data pass anywhere; code and agent instructions do not", 
   for (const f of ["docs/build.ts", "memory/who.ts", "AGENTS.md", "docs/AGENTS.md", "prompts/task.v2.md", ".claude/rules/truth.md", "docs/agents/ui-design.md", "package.json", "src/app.ts"]) {
     expect([f, isData(f)]).toEqual([f, false]);
   }
+  // A data-only repository (`.data-repo` at its root): media and JSON anywhere are data; scripts and instructions are not.
+  expect(["lynx/posts/rd1-a/1.png", "lynx/reviewer/rounds.json", "lynx/brand.test.ts", "lynx/AGENTS.md"].map((f) => isData(f, true))).toEqual([true, true, false, false]);
 });
 
 test("a heredoc body is text, and the command after it is still checked", () => {

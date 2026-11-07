@@ -91,6 +91,25 @@ test("data-only commits (a job's report or log) go straight to main; code or age
   expect(gate(data, "git push origin HEAD:main")).toBe(2);
 });
 
+test("a data-only repo opts in with a reviewed .data-repo on its default branch; a stray local one changes nothing", () => {
+  const t = (c: string) => `git -c user.name=t -c user.email=t@t commit -q -m ${c}`;
+  sh(root, "git init -q --bare -b main store.git && git clone -q store.git store 2>/dev/null");
+  const store = join(root, "store");
+  sh(store, `git commit -q --allow-empty -m one && git push -q origin main && git remote set-head origin main`);
+  sh(store, `touch .data-repo && mkdir -p lynx/posts && echo x > lynx/posts/1.png && git add -A && ${t("first")}`);
+  expect(gate(store, "git push")).toBe(2); // the marker itself is a change to review
+  sh(store, "git push -q --no-verify origin main"); // as if merged through a PR
+  sh(store, `echo y > lynx/posts/2.png && echo '[]' > lynx/rounds.json && git add -A && ${t("round")}`);
+  expect(gate(store, "git push")).toBe(0);
+  sh(store, `echo 1 > lynx/brand.test.ts && git add -A && ${t("script")}`);
+  expect(gate(store, "git push")).toBe(2);
+  sh(FEATURE, `git checkout -q main && echo '{}' > package.json && git add package.json && ${t("pkg")} && git add -N . && touch .data-repo`);
+  expect(gate(FEATURE, "git push")).toBe(2); // a local marker in a code repo changes nothing
+  sh(FEATURE, `git add .data-repo`);
+  expect(gate(FEATURE, ["git", "push", join(root, "origin.git"), "main"])).toBe(2); // nor a staged one, even to a URL remote
+  sh(FEATURE, "git rm -q --cached .data-repo && rm .data-repo && git reset -q --hard origin/main && git checkout -q feature");
+});
+
 test("docs, memory and data pass anywhere; code and agent instructions do not", () => {
   for (const f of ["docs/recap/2026-10-19.json", "memory/units/2026-10-18.jsonl", "notes/log.md", "README.md", "reports/weekly.csv"]) {
     expect([f, isData(f)]).toEqual([f, true]);
@@ -98,6 +117,8 @@ test("docs, memory and data pass anywhere; code and agent instructions do not", 
   for (const f of ["docs/build.ts", "memory/who.ts", "AGENTS.md", "docs/AGENTS.md", "prompts/task.v2.md", ".claude/rules/truth.md", "docs/agents/ui-design.md", "package.json", "src/app.ts"]) {
     expect([f, isData(f)]).toEqual([f, false]);
   }
+  // A data-only repository (`.data-repo` at its root): media and JSON anywhere are data; scripts and instructions are not.
+  expect(["lynx/posts/rd1-a/1.png", "lynx/reviewer/rounds.json", "lynx/brand.test.ts", "lynx/AGENTS.md"].map((f) => isData(f, true))).toEqual([true, true, false, false]);
 });
 
 test("a heredoc body is text, and the command after it is still checked", () => {

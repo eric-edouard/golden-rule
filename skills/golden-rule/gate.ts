@@ -109,22 +109,27 @@ function defaults(dir: string, remote = "origin") {
 
 /**
  * Not functional code, so not gated: documentation, memory and data (what routines add: notes, recaps, logs, ledgers).
- * Agent instructions are functional (they steer agents), so they stay gated wherever they live.
+ * Agent instructions are functional (they steer agents), so they stay gated wherever they live. A repository holding
+ * only data (a `.data-repo` file at its root) counts every non-script file as data, wherever it lives.
  */
 const DOC = /\.(md|mdx|txt|csv|jsonl|log)$/;
 const DATA_DIR = /^(docs|memory|data|reports)\//;
 const SCRIPT = /\.(ts|tsx|js|jsx|mjs|cjs|py|sh|rb|go|rs|swift|kt|sql)$/;
 const INSTRUCTIONS = /(^|\/)(AGENTS|CLAUDE|SKILL)\.md$|(^|\/)(prompts|\.claude|\.agents|\.cursor)\/|(^|\/)docs\/agents\//;
-export const isData = (path: string) =>
-  !INSTRUCTIONS.test(path) && (DOC.test(path) || (DATA_DIR.test(path) && !SCRIPT.test(path)));
+export const isData = (path: string, inDataRepo = false) =>
+  !INSTRUCTIONS.test(path) && (DOC.test(path) || ((inDataRepo || DATA_DIR.test(path)) && !SCRIPT.test(path)));
 
-/** The files the commits of `range` (by default those of `src` not yet on origin) change that are not data. */
-function codeIn(dir: string, src: string, range = [src, "--not", "--remotes=origin"]) {
+/** Whether `base` (a default branch as its remote has it) carries `.data-repo`: committed and reviewed, never a stray local file. */
+const dataRepo = (dir: string, base: string) => base !== "" && run(dir, ["git", "cat-file", "-e", `${base}:.data-repo`]) !== null;
+
+/** The files the commits of `range` (by default those of `src` not yet on origin) change that are not data, as `base` decides it. */
+function codeIn(dir: string, base: string, src: string, range = [src, "--not", "--remotes=origin"]) {
   const files = run(dir, ["git", "log", "--format=", "--name-only", ...range]);
   if (files === null) {
     return ["(could not list the commits being pushed)"];
   }
-  return [...new Set(files.split("\n").filter(Boolean))].filter((f) => !isData(f));
+  const all = dataRepo(dir, base);
+  return [...new Set(files.split("\n").filter(Boolean))].filter((f) => !isData(f, all));
 }
 
 function checkPush(dir: string, args: string[]) {
@@ -152,7 +157,7 @@ function checkPush(dir: string, args: string[]) {
       continue;
     }
     // A data-only push (a job's report, log or recap) goes straight to the default branch; code goes through a PR.
-    refuseCode(branch, codeIn(dir, from === "" || refspecs.length === 0 ? "HEAD" : from));
+    refuseCode(branch, codeIn(dir, `origin/${branch}`, from === "" || refspecs.length === 0 ? "HEAD" : from));
   }
 }
 
@@ -179,7 +184,7 @@ export function checkPrePush(dir: string, remote: string, lines: string) {
       continue;
     }
     const range = /^0+$/.test(remoteSha) ? [local, "--not", named ? `--remotes=${remote}` : "--remotes"] : [`${remoteSha}..${local}`];
-    refuseCode(branch, codeIn(dir, local, range));
+    refuseCode(branch, codeIn(dir, named ? `${remote}/${branch}` : "", local, range));
   }
 }
 
@@ -235,7 +240,8 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
     headRefOid: string;
     url: string;
   };
-  if (pr.files.length > 0 && pr.files.every((f) => isData(f.path))) {
+  const all = !repo && repoFlag.length === 0 && dataRepo(dir, `origin/${pr.baseRefName}`);
+  if (pr.files.length > 0 && pr.files.every((f) => isData(f.path, all))) {
     return; // documentation, memory or data only: nothing functional to review
   }
   const section = (pr.body ?? "").split(/^## Golden rule verdict\s*$/m)[1] ?? "";

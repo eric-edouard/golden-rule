@@ -91,6 +91,23 @@ test("data-only commits (a job's report or log) go straight to main; code or age
   expect(gate(data, "git push origin HEAD:main")).toBe(2);
 });
 
+test("a data-only repo opts in with a reviewed .data-repo on its default branch; a stray local one changes nothing", () => {
+  const t = (c: string) => `git -c user.name=t -c user.email=t@t commit -q -m ${c}`;
+  sh(root, "git init -q --bare -b main store.git && git clone -q store.git store 2>/dev/null");
+  const store = join(root, "store");
+  sh(store, `git commit -q --allow-empty -m one && git push -q origin main && git remote set-head origin main`);
+  sh(store, `touch .data-repo && mkdir -p lynx/posts && echo x > lynx/posts/1.png && git add -A && ${t("first")}`);
+  expect(gate(store, "git push")).toBe(2); // the marker itself is a change to review
+  sh(store, "git push -q --no-verify origin main"); // as if merged through a PR
+  sh(store, `echo y > lynx/posts/2.png && echo '[]' > lynx/rounds.json && git add -A && ${t("round")}`);
+  expect(gate(store, "git push")).toBe(0);
+  sh(store, `echo 1 > lynx/brand.test.ts && git add -A && ${t("script")}`);
+  expect(gate(store, "git push")).toBe(2);
+  sh(MAIN, "touch .data-repo");
+  expect(gate(MAIN, "git push")).toBe(2); // untracked marker in a code repo: still gated
+  sh(MAIN, "rm .data-repo");
+});
+
 test("docs, memory and data pass anywhere; code and agent instructions do not", () => {
   for (const f of ["docs/recap/2026-10-19.json", "memory/units/2026-10-18.jsonl", "notes/log.md", "README.md", "reports/weekly.csv"]) {
     expect([f, isData(f)]).toEqual([f, true]);

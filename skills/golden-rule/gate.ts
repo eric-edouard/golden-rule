@@ -4,7 +4,6 @@
 // stdin and refuses (exit 2, the reason on stderr) a plan with no golden-rule plan section, a merge whose PR carries no
 // passing golden-rule verdict of its current head, and a push of code to a repository's default branch (a data-only
 // push, a job's report or log, goes through). Every other call passes untouched. Parsing shell text cannot catch every bypass; it stops the ordinary ways of merging.
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 /** A command's output, or null when it fails or cannot start (e.g. a folder an earlier part of the command creates). */
@@ -120,15 +119,17 @@ const INSTRUCTIONS = /(^|\/)(AGENTS|CLAUDE|SKILL)\.md$|(^|\/)(prompts|\.claude|\
 export const isData = (path: string, dataRepo = false) =>
   !INSTRUCTIONS.test(path) && (DOC.test(path) || ((dataRepo || DATA_DIR.test(path)) && !SCRIPT.test(path)));
 
-/** The files the commits of `range` (by default those of `src` not yet on origin) change that are not data. */
-function codeIn(dir: string, src: string, range = [src, "--not", "--remotes=origin"]) {
+/** Whether `base` (a default branch as its remote has it) carries `.data-repo`: committed and reviewed, never a stray local file. */
+const dataRepo = (dir: string, base: string) => run(dir, ["git", "cat-file", "-e", `${base}:.data-repo`]) !== null;
+
+/** The files the commits of `range` (by default those of `src` not yet on origin) change that are not data, as `base` decides it. */
+function codeIn(dir: string, base: string, src: string, range = [src, "--not", "--remotes=origin"]) {
   const files = run(dir, ["git", "log", "--format=", "--name-only", ...range]);
   if (files === null) {
     return ["(could not list the commits being pushed)"];
   }
-  const top = run(dir, ["git", "rev-parse", "--show-toplevel"]);
-  const dataRepo = !!top && existsSync(`${top}/.data-repo`);
-  return [...new Set(files.split("\n").filter(Boolean))].filter((f) => !isData(f, dataRepo));
+  const all = dataRepo(dir, base);
+  return [...new Set(files.split("\n").filter(Boolean))].filter((f) => !isData(f, all));
 }
 
 function checkPush(dir: string, args: string[]) {
@@ -156,7 +157,7 @@ function checkPush(dir: string, args: string[]) {
       continue;
     }
     // A data-only push (a job's report, log or recap) goes straight to the default branch; code goes through a PR.
-    refuseCode(branch, codeIn(dir, from === "" || refspecs.length === 0 ? "HEAD" : from));
+    refuseCode(branch, codeIn(dir, `origin/${branch}`, from === "" || refspecs.length === 0 ? "HEAD" : from));
   }
 }
 
@@ -183,7 +184,7 @@ export function checkPrePush(dir: string, remote: string, lines: string) {
       continue;
     }
     const range = /^0+$/.test(remoteSha) ? [local, "--not", named ? `--remotes=${remote}` : "--remotes"] : [`${remoteSha}..${local}`];
-    refuseCode(branch, codeIn(dir, local, range));
+    refuseCode(branch, codeIn(dir, named ? `${remote}/${branch}` : "", local, range));
   }
 }
 
@@ -239,7 +240,8 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
     headRefOid: string;
     url: string;
   };
-  if (pr.files.length > 0 && pr.files.every((f) => isData(f.path))) {
+  const all = repoFlag.length === 0 && dataRepo(dir, `origin/${pr.baseRefName}`);
+  if (pr.files.length > 0 && pr.files.every((f) => isData(f.path, all))) {
     return; // documentation, memory or data only: nothing functional to review
   }
   const section = (pr.body ?? "").split(/^## Golden rule verdict\s*$/m)[1] ?? "";

@@ -103,9 +103,11 @@ test("a data-only repo opts in with a reviewed .data-repo on its default branch;
   expect(gate(store, "git push")).toBe(0);
   sh(store, `echo 1 > lynx/brand.test.ts && git add -A && ${t("script")}`);
   expect(gate(store, "git push")).toBe(2);
-  sh(MAIN, "touch .data-repo");
-  expect(gate(MAIN, "git push")).toBe(2); // untracked marker in a code repo: still gated
-  sh(MAIN, "rm .data-repo");
+  sh(FEATURE, `git checkout -q main && echo '{}' > package.json && git add package.json && ${t("pkg")} && git add -N . && touch .data-repo`);
+  expect(gate(FEATURE, "git push")).toBe(2); // a local marker in a code repo changes nothing
+  sh(FEATURE, `git add .data-repo`);
+  expect(gate(FEATURE, ["git", "push", join(root, "origin.git"), "main"])).toBe(2); // nor a staged one, even to a URL remote
+  sh(FEATURE, "git rm -q --cached .data-repo && rm .data-repo && git reset -q --hard origin/main && git checkout -q feature");
 });
 
 test("docs, memory and data pass anywhere; code and agent instructions do not", () => {

@@ -116,11 +116,11 @@ const DOC = /\.(md|mdx|txt|csv|jsonl|log)$/;
 const DATA_DIR = /^(docs|memory|data|reports)\//;
 const SCRIPT = /\.(ts|tsx|js|jsx|mjs|cjs|py|sh|rb|go|rs|swift|kt|sql)$/;
 const INSTRUCTIONS = /(^|\/)(AGENTS|CLAUDE|SKILL)\.md$|(^|\/)(prompts|\.claude|\.agents|\.cursor)\/|(^|\/)docs\/agents\//;
-export const isData = (path: string, dataRepo = false) =>
-  !INSTRUCTIONS.test(path) && (DOC.test(path) || ((dataRepo || DATA_DIR.test(path)) && !SCRIPT.test(path)));
+export const isData = (path: string, inDataRepo = false) =>
+  !INSTRUCTIONS.test(path) && (DOC.test(path) || ((inDataRepo || DATA_DIR.test(path)) && !SCRIPT.test(path)));
 
 /** Whether `base` (a default branch as its remote has it) carries `.data-repo`: committed and reviewed, never a stray local file. */
-const dataRepo = (dir: string, base: string) => run(dir, ["git", "cat-file", "-e", `${base}:.data-repo`]) !== null;
+const dataRepo = (dir: string, base: string) => base !== "" && run(dir, ["git", "cat-file", "-e", `${base}:.data-repo`]) !== null;
 
 /** The files the commits of `range` (by default those of `src` not yet on origin) change that are not data, as `base` decides it. */
 function codeIn(dir: string, base: string, src: string, range = [src, "--not", "--remotes=origin"]) {
@@ -240,7 +240,7 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
     headRefOid: string;
     url: string;
   };
-  const all = repoFlag.length === 0 && dataRepo(dir, `origin/${pr.baseRefName}`);
+  const all = !repo && repoFlag.length === 0 && dataRepo(dir, `origin/${pr.baseRefName}`);
   if (pr.files.length > 0 && pr.files.every((f) => isData(f.path, all))) {
     return; // documentation, memory or data only: nothing functional to review
   }

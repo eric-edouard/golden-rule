@@ -30,10 +30,11 @@ code is built on it. So the debt angle runs in three steps, and the last one mos
 
 ## Reviewers
 
-- **Top** (the plan check, and a full verdict: no plan, or a diff that left it): Claude, the Agent tool with the most
-  capable model. The shape is decided here, so it gets the best reader.
-- **Cheap** (watch, confirm-mode verdict, confirming round): Claude, the Agent tool with `model: "sonnet"`. They
-  check code against a plan that was already judged.
+- **Top** (the plan check, and a full verdict: no plan, or a diff that left it): Claude, the Agent tool with
+  `model: "opus"`; a more capable model only when the user asks. The shape is decided here, so it gets a strong reader.
+- **Cheap** (watch, confirm-mode verdict, a full verdict of a change that adds no function, type, module or concept,
+  confirming round): Claude, the Agent tool with `model: "sonnet"`. They check code against a plan that was already
+  judged, or a change too small to need one.
 - Codex: `codex exec` with its default model for every reviewer.
 
 ## The questions

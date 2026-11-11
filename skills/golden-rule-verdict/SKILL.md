@@ -18,6 +18,8 @@ description: >
      passed: the prompt below, with that section pasted in. Architecture is reopened only where the diff left the plan.
    - **Full**, by a top reviewer, otherwise (no plan, a plan never reviewed, or a diff that is mostly not the plan): the prompt below,
      with "(no plan)" where the plan goes; the reviewer then answers every architecture question from zero.
+     By a cheap reviewer instead when the change adds no function, type, module or concept (its plan is `n/a`); if
+     that reviewer finds one added, a top reviewer redoes the verdict.
 3. **Act on the report.** **Do it**: fix on the branch. **Rework**: do it in this PR when it is the change's own
    foundation, or open it now as its own task or PR with a complete brief; say which, per item, never as a line of
    prose. **Kept on purpose**: only with a reason the user would accept.

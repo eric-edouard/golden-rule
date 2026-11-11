@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { commands, isData } from "./gate";
 
 // The gate on throwaway repos: an origin whose default branch is main, a clone on main and one on a feature branch.
-// Run: bun test ~/.agents/skills/golden-rule/gate.test.ts
+// Run: bun test ~/.agents/skills/work-on-code/gate.test.ts
 
 const GATE = join(import.meta.dir, "gate.ts");
-const root = mkdtempSync(join(tmpdir(), "golden-gate-"));
+const root = mkdtempSync(join(tmpdir(), "work-on-code-gate-"));
 const sh = (cwd: string, cmd: string) => {
   const p = Bun.spawnSync(["sh", "-c", cmd], { cwd, env: { HOME: process.env.HOME, PATH: process.env.PATH } });
   if (p.exitCode !== 0) {
@@ -71,7 +71,7 @@ test("a feature branch pushes freely, and words in arguments are not commands", 
   expect(gate(MAIN, "grep -rE 'git push|push origin' .")).toBe(0);
 });
 
-test("merges through the API are refused (gh pr merge is checked against the PR's golden-rule verdict)", () => {
+test("merges through the API are refused (gh pr merge is checked against the PR's debt verdict)", () => {
   expect(gate(MAIN, "gh api -X PUT repos/o/r/pulls/3/merge")).toBe(2);
 });
 
@@ -142,11 +142,11 @@ test("a push from a folder the same command creates: decided from the named bran
   expect(gate(root, "mkdir x && cd x && git push origin main")).toBe(2);
 });
 
-test("a plan passes only with a golden-rule plan section", () => {
+test("a plan passes only with a debt plan section", () => {
   const plan = (text: string) => run({ tool_name: "ExitPlanMode", tool_input: { plan: text } });
-  expect(plan("# Add X\n\nSteps.\n\n## Golden rule plan\nInventory: none")).toBe(0);
-  expect(plan("# Fix copy\n### Golden-rule plan\nn/a: copy only")).toBe(0);
-  expect(plan("# Add X\n\nSteps, with the golden rule plan in mind.")).toBe(2);
+  expect(plan("# Add X\n\nSteps.\n\n## Debt plan\nInventory: none")).toBe(0);
+  expect(plan("# Fix copy\n### Debt plan\nn/a: copy only")).toBe(0);
+  expect(plan("# Add X\n\nSteps, with the debt plan in mind.")).toBe(2);
 });
 
 test("as git's pre-push hook (any harness): code to main is refused, data, tags and branches pass", () => {
@@ -167,4 +167,4 @@ test("as git's pre-push hook (any harness): code to main is refused, data, tags 
   sh(root, "git init -q --bare -b main empty.git");
   sh(repo, `git remote add empty ${join(root, "empty.git")}`);
   expect(push("empty main")).not.toBe(0);
-});
+}, 30_000); // real git pushes through the hook: slower than the 5 s default on a busy Mac

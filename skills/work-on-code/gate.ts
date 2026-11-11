@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
-// The golden-rule gate: a PreToolUse hook for Claude Code and Codex, and (`gate.ts pre-push`) git's pre-push hook for any
-// harness (SKILL.md, "The gate"). As a tool hook it reads the tool call on
-// stdin and refuses (exit 2, the reason on stderr) a plan with no golden-rule plan section, a merge whose PR carries no
-// passing golden-rule verdict of its current head, and a push of code to a repository's default branch (a data-only
+// The work-on-code gate: a PreToolUse hook for Claude Code and Codex, and (`gate.ts pre-push`) git's pre-push hook for any
+// harness (gate.md). As a tool hook it reads the tool call on
+// stdin and refuses (exit 2, the reason on stderr) a plan with no debt plan section, a merge whose PR carries no
+// passing debt verdict of its current head, and a push of code to a repository's default branch (a data-only
 // push, a job's report or log, goes through). Every other call passes untouched. Parsing shell text cannot catch every bypass; it stops the ordinary ways of merging.
 import { resolve } from "node:path";
 
@@ -18,7 +18,7 @@ const run = (cwd: string, cmd: string[]) => {
 
 /** A refusal: why, and what to do instead. */
 function deny(why: string): never {
-  console.error(`golden-rule gate: ${why}`);
+  console.error(`work-on-code gate: ${why}`);
   process.exit(2);
 }
 
@@ -164,7 +164,7 @@ function checkPush(dir: string, args: string[]) {
 function refuseCode(branch: string, code: string[]) {
   if (code.length > 0) {
     deny(
-      `pushing code to ${branch}, the default branch, is not allowed (${code.slice(0, 5).join(", ")}${code.length > 5 ? ", …" : ""}). Push a branch, open a PR, run golden-rule-verdict, then merge with gh pr merge. Docs, memory and data (not agent instructions) may go straight to ${branch}.`
+      `pushing code to ${branch}, the default branch, is not allowed (${code.slice(0, 5).join(", ")}${code.length > 5 ? ", …" : ""}). Push a branch, open a PR, run work-on-code, then merge with gh pr merge. Docs, memory and data (not agent instructions) may go straight to ${branch}.`
     );
   }
 }
@@ -231,7 +231,7 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
     "baseRefName,body,files,headRefOid,url",
   ]);
   if (!json) {
-    deny("could not read the PR to check its golden-rule verdict (gh pr view failed: offline, not signed in, or no PR).");
+    deny("could not read the PR to check its debt verdict (gh pr view failed: offline, not signed in, or no PR).");
   }
   const pr = JSON.parse(json) as {
     baseRefName: string;
@@ -244,20 +244,20 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
   if (pr.files.length > 0 && pr.files.every((f) => isData(f.path, all))) {
     return; // documentation, memory or data only: nothing functional to review
   }
-  const section = (pr.body ?? "").split(/^## Golden rule verdict\s*$/m)[1] ?? "";
+  const section = (pr.body ?? "").split(/^## Debt verdict\s*$/m)[1] ?? "";
   const reviewed = section.match(/^Reviewed:\s*`?([0-9a-f]{7,40})/m)?.[1];
   const verdict = section.match(/^Verdict:\s*(.+)$/m)?.[1]?.trim();
   if (!(reviewed && verdict)) {
     deny(
-      `${pr.url} has no golden-rule verdict. Run golden-rule-verdict: a fresh reviewer, its findings applied, and its verdict written into the PR as "## Golden rule verdict" with "Reviewed: <head sha>".`
+      `${pr.url} has no debt verdict. Run work-on-code: a fresh reviewer, its findings applied, and its verdict written into the PR as "## Debt verdict" with "Reviewed: <head sha>".`
     );
   }
   if (/rework needed/i.test(verdict)) {
-    deny(`${pr.url}'s golden-rule verdict says "rework needed". Do the rework (here or as its own PR) and review again.`);
+    deny(`${pr.url}'s debt verdict says "rework needed". Do the rework (here or as its own PR) and review again.`);
   }
   if (!pr.headRefOid.startsWith(reviewed)) {
     deny(
-      `${pr.url}'s golden-rule verdict is for ${reviewed.slice(0, 12)}, but the PR's head is now ${pr.headRefOid.slice(0, 12)}. Review the new commits (golden-rule-verdict) and update the verdict.`
+      `${pr.url}'s debt verdict is for ${reviewed.slice(0, 12)}, but the PR's head is now ${pr.headRefOid.slice(0, 12)}. Review the new commits (work-on-code) and update the verdict.`
     );
   }
   // The base moved since the review: the merge result was never checked or reviewed.
@@ -267,7 +267,7 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
   ]);
   if (behind === null || Number(behind) > 0) {
     deny(
-      `${pr.url} is ${behind ?? "maybe"} commit(s) behind ${pr.baseRefName}: merge origin/${pr.baseRefName} into the branch, run the check, a full verdict again (golden-rule-verdict), then merge.`
+      `${pr.url} is ${behind ?? "maybe"} commit(s) behind ${pr.baseRefName}: merge origin/${pr.baseRefName} into the branch, run the check, a full verdict again (work-on-code), then merge.`
     );
   }
   const pinned = values.get("--match-head-commit");
@@ -313,7 +313,7 @@ function check(script: string, from: string) {
         args[0] === "api" &&
         args.some((x) => /pulls\/\d+\/merge|mergePullRequest|enablePullRequestAutoMerge/.test(x))
       ) {
-        deny("merge through `gh pr merge`, so the golden-rule verdict can be checked.");
+        deny("merge through `gh pr merge`, so the debt verdict can be checked.");
       }
     }
   }
@@ -329,9 +329,9 @@ if (import.meta.main && process.argv[2] === "pre-push") {
   try {
     const input = JSON.parse((await Bun.stdin.text()) || "{}");
     if (input.tool_name === "ExitPlanMode") {
-      if (!/^#{1,6}\s*Golden[- ]rule plan\b/im.test(String(input.tool_input?.plan ?? ""))) {
+      if (!/^#{1,6}\s*Debt plan\b/im.test(String(input.tool_input?.plan ?? ""))) {
         deny(
-          'this plan has no "## Golden rule plan" section. Add it as the golden-rule-plan skill says.'
+          'this plan has no "## Debt plan" section. Add it as the work-on-code skill says.'
         );
       }
       process.exit(0);

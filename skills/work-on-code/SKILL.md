@@ -29,9 +29,11 @@ the last step mostly confirms.
 ## Models: four ranks, mapped once per session
 
 - Before the first delegation, rank the models this harness can launch, from the session's own provider only
-  (Claude Code: the Agent tool's `model:` values; Codex: `codex debug models`, launched with `codex exec -m <slug>`),
-  newest of each family, by capability: **frontier** (the most capable) › **senior** › **junior** › **intern** (the
-  cheapest). With fewer than four, a rank takes the nearest model above it. Say the mapping in one line.
+  (Claude Code: the Agent tool's `model:` values; Codex: the visible models in `codex debug models`, by their
+  `description`, never `priority`, launched with `codex exec -m <slug>`), newest of each family, by capability:
+  **frontier** (the most capable) › **senior** › **junior** › **intern** (the cheapest). With fewer than four,
+  frontier and intern take the most and least capable; each rank between takes the nearest model above it. Say the
+  mapping in one line.
 - Everything below names ranks, never models. A higher rank than it names, or a higher effort, only when the user
   asks.
 

@@ -26,20 +26,27 @@ the last step mostly confirms.
 - Planning a change that adds a function, type, module or concept: read `architecture.md` (the questions and the
   naming rules) first.
 
+## Models: four ranks, mapped once per session
+
+- Before the first delegation, rank the models this harness can launch, from the session's own provider only
+  (Claude Code: the Agent tool's `model:` values; Codex: `codex debug models`, launched with `codex exec -m <slug>`),
+  newest of each family, by capability: **frontier** (the most capable) › **senior** › **junior** › **intern** (the
+  cheapest). With fewer than four, a rank takes the nearest model above it. Say the mapping in one line.
+- Everything below names ranks, never models. A higher rank than it names, or a higher effort, only when the user
+  asks.
+
 ## Tier: decided once, written in the plan
 
 | | small | standard | hard |
 | --- | --- | --- | --- |
 | When | adds no function, type, module or concept (a fix inside one function, a copy edit) | adds one, on a sound foundation | any of: foundation shaky or wrong; new data model or migration; queues, retries, schedules, concurrency; auth, payments, a trust boundary; spans repos; two failed fixes |
-| Plan | `n/a: <why>` | main session writes, fresh `opus` checks | `haiku` inventory, fresh `fable` designs, fresh `opus` checks |
-| Build | main session | main session; `sonnet` agents for mechanical volume | same |
-| Watch | none | `sonnet`, when the work spans several commits or sittings | same |
-| Verdict, **confirm** (plan passed, diff follows it) | never | `sonnet` | `opus` |
-| Verdict, **full** (no passed plan, or a diff mostly not the plan) | `sonnet` | `opus` | `fable` |
-| Confirming round | `sonnet` | `sonnet` | `sonnet` |
+| Plan | `n/a: <why>` | main session writes, fresh senior checks | intern inventory, fresh frontier designs, fresh senior checks |
+| Build | main session | main session; junior agents for mechanical volume | same |
+| Watch | none | junior, when the work spans several commits or sittings | same |
+| Verdict, **confirm** (plan passed, diff follows it) | never | junior | senior |
+| Verdict, **full** (no passed plan, or a diff mostly not the plan) | junior | senior | frontier |
+| Confirming round | junior | junior | junior |
 
-- Models are the Agent tool's `model:` values. A stronger model than the tier names, or a higher effort, only when
-  the user asks. Codex: `codex exec` with its default model for every reviewer.
 - A small-tier reviewer that finds a function, type, module or concept added says so: the tier was wrong, redo the
   verdict as standard.
 - Reviewers are always fresh agents with no memory of the work, and never edit, commit, push or comment. Never
@@ -51,9 +58,10 @@ the last step mostly confirms.
 
 - Delegate to protect the main context, cut cost, or run independent work in parallel. Never two agents on the same files.
 - **Needs no intelligence, and its output would fill the main context** (search, inventory, logs, docs lookup, bulk
-  reads): `haiku`; rerun on `sonnet` when the output is not good enough. Every result carries file:line evidence.
-- **Mechanical volume from a precise plan** (migrating callers, renames, tests): `sonnet`, with file-level instructions.
-- **Small and targeted:** the main session does it itself; a cold agent would reread what you already read.
+  reads): intern; rerun on junior when the output is not good enough. Every result carries file:line evidence.
+- **Mechanical volume from a precise plan** (migrating callers, renames, tests): junior, with file-level instructions.
+- **Small and targeted, or a chain of dependent steps:** the main session does it itself; a cold agent would reread
+  what you already read.
 
 ## Plan (before code)
 
@@ -71,15 +79,15 @@ Net lines: expected +a / −d
 Plan review: <passed | the findings and what changed>
 ```
 
-- **Hard:** a `haiku` agent builds the inventory; a fresh `fable` agent gets the problem, the constraints and that
+- **Hard:** an intern agent builds the inventory; a fresh frontier agent gets the problem, the constraints and that
   inventory with `plan-design.md`, and returns the section; the main session expands it into the checklist.
-- **Check:** one fresh `opus` reviewer gets the plan's text and the repo path, nothing else, with `plan-review.md`.
+- **Check:** one fresh senior reviewer gets the plan's text and the repo path, nothing else, with `plan-review.md`.
   On a reshape, fix the plan and say what changed under `Plan review:`; a second review only when the shape changed.
 - When the PR opens, copy the section into its description: the watch and the verdict compare the code to it.
 
 ## Watch (while coding)
 
-When work with a passed plan spans several commits or more than one sitting, launch a fresh `sonnet` watcher in the
+When work with a passed plan spans several commits or more than one sitting, launch a fresh junior watcher in the
 background after the first commit, with `watch.md`, the repo path, the `## Debt plan` section and a commit range,
 never the worktree you keep editing. Work done in one sitting skips it: the verdict covers it.
 
@@ -107,7 +115,7 @@ before creating, clean up as you go; every changed line traces to the request or
 3. **Act on the report.** **Do it**: fix on the branch. **Rework**: do it in this PR when it is the change's own
    foundation, or open it now as its own task or PR with a complete brief; say which, per item, never as a line of
    prose. **Kept on purpose**: only with a reason the user would accept.
-4. **One confirming round, then stop.** A new fresh `sonnet` reviewer gets `verdict-confirm.md`, the must-fix and
+4. **One confirming round, then stop.** A new fresh junior reviewer gets `verdict-confirm.md`, the must-fix and
    kept-on-purpose items verbatim, and the fixes only (`git diff <sha the last round saw>..HEAD`). A full round
    again (step 2) only when a fix reshaped the change or the base was merged in. Whatever the confirming round still
    finds goes into the verdict as debt added, a rework or kept on purpose; no third round.

@@ -28,8 +28,10 @@ function gate(cwd: string, command: string | string[]) {
   return run({ cwd, tool_input: { command } });
 }
 function run(input: object) {
-  const p = Bun.spawnSync(["bun", GATE], { stdin: new TextEncoder().encode(JSON.stringify(input)) });
-  return p.exitCode;
+  return refusal(input).exitCode;
+}
+function refusal(input: object) {
+  return Bun.spawnSync(["bun", GATE], { stdin: new TextEncoder().encode(JSON.stringify(input)) });
 }
 
 test("pushes to the default branch are refused, however they are written", () => {
@@ -131,28 +133,87 @@ test("redirections are not arguments", () => {
   expect(gate(MAIN, "git push origin main 2>&1 | tail -3")).toBe(2);
 });
 
+// The env-safety flags every `codex exec` needs, as SKILL.md writes them, and unquoted.
+const SAFE = `-c allow_login_shell=false -c 'shell_environment_policy.inherit="core"'`;
+const SAFE_UNQUOTED = "-c allow_login_shell=false -c shell_environment_policy.inherit=core";
+const SAFE_ARGV = ["-c", "allow_login_shell=false", "-c", 'shell_environment_policy.inherit="core"'];
+
+test("codex exec runs only with both env-safety flags, in the quoting forms agents write", () => {
+  const login = "-c allow_login_shell=false";
+  const inherit = `-c 'shell_environment_policy.inherit="core"'`;
+  // Refused without the flags, or with one, naming exactly the flags to add.
+  for (const [cmd, missing] of [
+    ["codex exec review </dev/null", [login, inherit]],
+    [`codex exec ${login} review </dev/null`, [inherit]],
+    [`codex exec ${inherit} review </dev/null`, [login]],
+    [`codex exec resume --last ${login} review </dev/null`, [inherit]],
+  ] as const) {
+    const p = refusal({ cwd: FEATURE, tool_input: { command: cmd } });
+    expect(p.exitCode).toBe(2);
+    expect(String(p.stderr)).toEndWith(`Add: ${missing.join(" ")}\n`);
+  }
+  // Allowed with both, on exec and on resume, however quoted or placed.
+  for (const cmd of [
+    `codex exec ${SAFE} review </dev/null`,
+    `codex exec resume --last ${SAFE} review </dev/null`,
+    `codex exec ${SAFE_UNQUOTED} review </dev/null`,
+    `codex exec -c "allow_login_shell = false" -c "shell_environment_policy.inherit='core'" review </dev/null`,
+    "codex exec --config allow_login_shell=false --config=shell_environment_policy.inherit=core review </dev/null",
+    "codex exec -callow_login_shell=false -c=shell_environment_policy.inherit=core review </dev/null",
+    `codex -m gpt --strict-config -c allow_login_shell=false exec ${inherit} review </dev/null`,
+    `codex exec -c allow_login_shell=false -c shell_environment_policy.inherit=core</dev/null`,
+    `timeout 900 codex e ${SAFE} review </dev/null`,
+  ]) {
+    expect([cmd, gate(FEATURE, cmd)]).toEqual([cmd, 0]);
+  }
+  // Refused: a later value overrides, a flag after \`--\` is a prompt word, the flags are on an outer command.
+  for (const cmd of [
+    `codex exec ${SAFE} -c allow_login_shell=true review </dev/null`,
+    `codex exec ${login} -- ${inherit} review </dev/null`,
+    `codex e review </dev/null`,
+    `codex --strict-config exec review </dev/null`,
+    `bash -lc "codex exec review </dev/null"`,
+    // Not the protected key, an enclosing table set after it, the subcommand glued to its redirection.
+    `codex exec -c '"allow_login_shell"=false' ${inherit} review </dev/null`,
+    `codex exec ${SAFE} -c 'shell_environment_policy={inherit="all"}' review </dev/null`,
+    "codex exec</dev/null",
+    "codex exec&>out.txt </dev/null",
+    // A boolean is not a string, and a quoted `<` is a value's, not a redirection.
+    `codex exec -c 'allow_login_shell="false"' ${inherit} review </dev/null`,
+    `codex exec -c 'allow_login_shell=false<x' ${inherit} review </dev/null`,
+  ]) {
+    expect([cmd, gate(FEATURE, cmd)]).toEqual([cmd, 2]);
+  }
+  expect(gate(FEATURE, ["bash", "-lc", `codex exec resume --last ${SAFE} review </dev/null`])).toBe(0);
+  expect(gate(FEATURE, ["bash", "-lc", "codex exec resume --last review </dev/null"])).toBe(2);
+  // Codex's own argv with a global option first is one command's words, never a shell script.
+  expect(gate(FEATURE, ["codex", "-c", "allow_login_shell=false", "exec", "review"])).toBe(2);
+  expect(gate(FEATURE, ["/bin/dash", "-c", "codex exec review </dev/null"])).toBe(2);
+  expect(gate(FEATURE, 'codex "explain exec" </dev/null')).toBe(0);
+});
+
 test("codex exec runs only with its stdin redirected, piped or supplied, in the forms agents write", () => {
-  expect(gate(FEATURE, 'codex exec -s read-only "review" </dev/null > out.txt 2>&1')).toBe(0);
-  expect(gate(FEATURE, 'cd /tmp && codex exec "review" 0< /dev/null &')).toBe(0);
-  expect(gate(FEATURE, 'codex exec -s read-only "review" > out.txt 2>&1')).toBe(2);
-  expect(gate(FEATURE, 'timeout 900 codex exec "review" </dev/null')).toBe(0);
-  expect(gate(FEATURE, 'timeout 900 codex exec "review"')).toBe(2);
-  expect(gate(FEATURE, 'sh -c "codex exec review"')).toBe(2);
+  expect(gate(FEATURE, `codex exec ${SAFE} -s read-only "review" </dev/null > out.txt 2>&1`)).toBe(0);
+  expect(gate(FEATURE, `cd /tmp && codex exec ${SAFE} "review" 0< /dev/null &`)).toBe(0);
+  expect(gate(FEATURE, `codex exec ${SAFE} -s read-only "review" > out.txt 2>&1`)).toBe(2);
+  expect(gate(FEATURE, `timeout 900 codex exec ${SAFE} "review" </dev/null`)).toBe(0);
+  expect(gate(FEATURE, `timeout 900 codex exec ${SAFE} "review"`)).toBe(2);
+  expect(gate(FEATURE, `sh -c "codex exec ${SAFE_UNQUOTED} review"`)).toBe(2);
   expect(gate(FEATURE, 'echo "codex exec is how a review runs"')).toBe(0);
   // A prompt that only looks like a redirection is no redirection; a pipe, heredoc or here-string feeds stdin.
-  expect(gate(FEATURE, 'codex exec "<task>review</task>"')).toBe(2);
-  expect(gate(FEATURE, "codex exec review</dev/null")).toBe(0);
-  expect(gate(FEATURE, "cat prompt.md | codex exec -")).toBe(0);
-  expect(gate(FEATURE, "codex exec - <<'EOF'\nreview\nEOF")).toBe(0);
-  expect(gate(MAIN, "codex exec - <<< review; git push origin main")).toBe(2);
-  expect(gate(FEATURE, "false || codex exec review")).toBe(2);
+  expect(gate(FEATURE, `codex exec ${SAFE} "<task>review</task>"`)).toBe(2);
+  expect(gate(FEATURE, `codex exec ${SAFE} review</dev/null`)).toBe(0);
+  expect(gate(FEATURE, `cat prompt.md | codex exec ${SAFE} -`)).toBe(0);
+  expect(gate(FEATURE, `codex exec ${SAFE} - <<'EOF'\nreview\nEOF`)).toBe(0);
+  expect(gate(MAIN, `codex exec ${SAFE} - <<< review; git push origin main`)).toBe(2);
+  expect(gate(FEATURE, `false || codex exec ${SAFE} review`)).toBe(2);
   expect(gate(FEATURE, "timeout 5 printf '%s' codex exec")).toBe(0);
-  expect(gate(FEATURE, "codex exec review 3</dev/null")).toBe(2);
+  expect(gate(FEATURE, `codex exec ${SAFE} review 3</dev/null`)).toBe(2);
   // Codex's plain argv: a prompt word is never shell syntax.
-  expect(gate(FEATURE, ["codex", "exec", "<task>review</task>"])).toBe(2);
-  expect(gate(FEATURE, ["codex", "exec", `it's "<b>" review`])).toBe(2);
+  expect(gate(FEATURE, ["codex", "exec", ...SAFE_ARGV, "<task>review</task>"])).toBe(2);
+  expect(gate(FEATURE, ["codex", "exec", ...SAFE_ARGV, `it's "<b>" review`])).toBe(2);
   expect(gate(MAIN, ["git", "push", "origin", "main"])).toBe(2);
-  expect(gate(FEATURE, ["bash", "-lc", "codex exec review </dev/null"])).toBe(0);
+  expect(gate(FEATURE, ["bash", "-lc", `codex exec ${SAFE} review </dev/null`])).toBe(0);
 });
 
 test("merging two PRs at once, or the wrong one through a flag value, is refused", () => {

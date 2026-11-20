@@ -200,6 +200,23 @@ export function checkPrePush(dir: string, remote: string, lines: string) {
   }
 }
 
+/**
+ * Whether a verdict of `reviewed` still holds at `head`: `head` holds exactly `reviewed` merged cleanly with `base`
+ * (the same tree), and the base's commits since touch none of the files the reviewed PR changed (renames count as
+ * both paths). Read from local git; anything it cannot read is a no.
+ */
+export function carries(dir: string, reviewed: string, head: string, base: string) {
+  const merged = run(dir, ["git", "merge-tree", "--write-tree", reviewed, base]);
+  const tree = run(dir, ["git", "rev-parse", `${head}^{tree}`]);
+  const ours = run(dir, ["git", "diff", "--no-renames", "--name-only", `${base}...${reviewed}`]);
+  const theirs = run(dir, ["git", "diff", "--no-renames", "--name-only", `${reviewed}...${base}`]);
+  if (!tree || merged?.split("\n")[0] !== tree || ours === null || theirs === null) {
+    return false;
+  }
+  const touched = new Set(theirs.split("\n"));
+  return !ours.split("\n").some((f) => f !== "" && touched.has(f));
+}
+
 /** `gh` flags that take a value, so the value is not mistaken for the PR. */
 const VALUED = new Set([
   "-R",
@@ -252,7 +269,8 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
     headRefOid: string;
     url: string;
   };
-  const all = !repo && repoFlag.length === 0 && dataRepo(dir, `origin/${pr.baseRefName}`);
+  const local = !repo && repoFlag.length === 0; // the PR's repo is this checkout, so its git can be read
+  const all = local && dataRepo(dir, `origin/${pr.baseRefName}`);
   if (pr.files.length > 0 && pr.files.every((f) => isData(f.path, all))) {
     return; // documentation, memory or data only: nothing functional to review
   }
@@ -267,19 +285,20 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
   if (/rework needed/i.test(verdict)) {
     deny(`${pr.url}'s debt verdict says "rework needed". Do the rework (here or as its own PR) and review again.`);
   }
-  if (!pr.headRefOid.startsWith(reviewed)) {
+  // The base as GitHub has it, never a local ref, which may name another remote's commits or be forged.
+  const repoPath = pr.url.replace(/^https:\/\/github\.com\//, "").replace(/\/pull\/\d+$/, "");
+  const [behind, baseSha] = (run(dir, [
+    "gh", "api", `repos/${repoPath}/compare/${pr.baseRefName}...${pr.headRefOid}`, "-q", "[.behind_by, .base_commit.sha] | @tsv",
+  ]) ?? "").split("\t");
+  if (!(pr.headRefOid.startsWith(reviewed) || (local && baseSha && carries(dir, reviewed, pr.headRefOid, baseSha)))) {
     deny(
-      `${pr.url}'s debt verdict is for ${reviewed.slice(0, 12)}, but the PR's head is now ${pr.headRefOid.slice(0, 12)}. Review the new commits (work-on-code) and update the verdict.`
+      `${pr.url}'s debt verdict is for ${reviewed.slice(0, 12)}, but the PR's head is now ${pr.headRefOid.slice(0, 12)} and is not a clean merge of ${pr.baseRefName} into it that leaves the PR's files alone (checked from the PR's checkout). Review the new commits (work-on-code) and update the verdict.`
     );
   }
-  // The base moved since the review: the merge result was never checked or reviewed.
-  const repoPath = pr.url.replace(/^https:\/\/github\.com\//, "").replace(/\/pull\/\d+$/, "");
-  const behind = run(dir, [
-    "gh", "api", `repos/${repoPath}/compare/${pr.baseRefName}...${pr.headRefOid}`, "-q", ".behind_by",
-  ]);
-  if (behind === null || Number(behind) > 0) {
+  // The base moved since the merge: the result was never checked or reviewed.
+  if (!behind || Number(behind) > 0) {
     deny(
-      `${pr.url} is ${behind ?? "maybe"} commit(s) behind ${pr.baseRefName}: merge origin/${pr.baseRefName} into the branch, run the check, a full verdict again (work-on-code), then merge.`
+      `${pr.url} is ${behind || "maybe"} commit(s) behind ${pr.baseRefName}: take the landing lock, merge origin/${pr.baseRefName} into the branch, push (the check runs), confirm or redo the verdict (work-on-code), then merge.`
     );
   }
   const pinned = values.get("--match-head-commit");

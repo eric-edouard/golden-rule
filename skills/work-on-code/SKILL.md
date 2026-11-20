@@ -96,6 +96,7 @@ Plan review: <passed | the findings and what changed>
 - **Check:** one fresh senior reviewer gets the plan's text and the repo path, nothing else, with `plan-review.md`.
   On a reshape, fix the plan and say what changed under `Plan review:`; a second review only when the shape changed.
 - When the PR opens, copy the section into its description: the watch and the verdict compare the code to it.
+- Split work over about 800 changed lines into several PRs, or stack them.
 
 ## Watch (while coding)
 
@@ -119,9 +120,10 @@ before creating, clean up as you go; every changed line traces to the request or
 
 ## Verdict (before every merge into a default branch; required)
 
-1. **Bring the branch up to date and green.** `git fetch`, `git merge origin/<default>`, run the project's check
-   (`bun run check` or its equivalent), push. The merge result is what lands; a later update stales the verdict.
-2. **Fresh reviewer**, model and mode from the tier table, with `verdict-review.md`, the repo path, the PR or
+1. **Push; the repo's pre-push hook is the check.** Never run the check, then push the same tree again (a passing
+   check records its tree hash, the hook skips a matching tree). Merge main only at landing (step 6) or on a real
+   conflict, never mid-review. While iterating, run only the changed tests when the runner supports it.
+2. **Fresh reviewer**, launched while the check runs, model and mode from the tier table, with `verdict-review.md`, the repo path, the PR or
    branch, the worktree to read, and the PR's `## Debt plan` section (or "(no plan)"). Confirm reopens architecture
    only where the diff left the plan; full answers every architecture question from zero.
 3. **Act on the report.** **Do it**: fix on the branch. **Rework**: do it in this PR when it is the change's own
@@ -130,7 +132,7 @@ before creating, clean up as you go; every changed line traces to the request or
    from another CLI): check it against the code before acting; a claim about behavior needs a reachable input.
 4. **One confirming round, then stop.** A new fresh junior reviewer gets `verdict-confirm.md`, the must-fix and
    kept-on-purpose items verbatim, and the fixes only (`git diff <sha the last round saw>..HEAD`). A full round
-   again (step 2) only when a fix reshaped the change or the base was merged in. Whatever the confirming round still
+   again (step 2) only when a fix reshaped the change. Whatever the confirming round still
    finds goes into the verdict as debt added, a rework or kept on purpose; no third round.
 5. **Write the verdict into the PR description** (`gh pr edit --body-file`, or `gh api -X PATCH
    repos/{owner}/{repo}/pulls/{n} -F body=@file` when that fails), replacing any earlier one, in its own command,
@@ -138,7 +140,7 @@ before creating, clean up as you go; every changed line traces to the request or
 
    ```
    ## Debt verdict
-   Reviewed: <full sha of the PR's current head>
+   Reviewed: <full sha the verdict reviewed: the PR's head, or the head before a clean merge of main>
    Verdict: debt reduced | no debt added | debt added | rework needed
    Plan: matched | drifted: <what, and whether the plan was updated> | none (full review)
    Net lines: +<added> / −<deleted>
@@ -150,7 +152,11 @@ before creating, clean up as you go; every changed line traces to the request or
    ```
 
    "rework needed" cannot merge. "debt added" can, only when each item is a tracked rework or kept on purpose.
-6. **Report in this order:** the verdict, the reworks (as tasks or PRs ready to start), the net lines, then the
+6. **Land one PR at a time.** Take the repo's landing lock (`land-lock.sh take`, beside this skill; `drop` once merged
+   or abandoned), merge `origin/<default>` once, push. A clean merge whose new main commits touch none of the PR's
+   files keeps the verdict (the gate checks it); a junior runs the base round of `verdict-confirm.md`. Otherwise, or
+   when the base round finds main touching the PR's names, a full round again (step 2). The full check always runs on what lands.
+7. **Report in this order:** the verdict, the reworks (as tasks or PRs ready to start), the net lines, then the
    merge: merge it yourself when the verdict passes, unless the user's or the repo's rules ask for their OK first.
 
 ## Rules
@@ -161,5 +167,9 @@ before creating, clean up as you go; every changed line traces to the request or
 - "Did we add debt?" is answered by the verdict, never by a self-assessment.
 - **Not for docs, memory or data.** Notes, recaps, logs, memory and Markdown docs need no review: push them straight
   to `main`. Agent instructions (`AGENTS.md`, `CLAUDE.md`, skills, prompts) are functional and reviewed.
+- Large work (many PRs in flight, or several agents on one repo) needs a merge queue: when the repo has none,
+  recommend one (the landing lock, or the platform's).
+- When one machine's check queue is the bottleneck, recommend a remote check machine; it needs the user's yes
+  (money, code off the machine).
 - A hook enforces the plan section, the verdict before `gh pr merge` and no code pushed to the default branch:
   `gate.md` when it refuses something or needs installing.

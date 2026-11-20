@@ -160,7 +160,7 @@ test("codex exec runs only with both env-safety flags, in the quoting forms agen
     `codex exec -c "allow_login_shell = false" -c "shell_environment_policy.inherit='core'" review </dev/null`,
     "codex exec --config allow_login_shell=false --config=shell_environment_policy.inherit=core review </dev/null",
     "codex exec -callow_login_shell=false -c=shell_environment_policy.inherit=core review </dev/null",
-    `codex -m gpt --full-auto -c allow_login_shell=false exec ${inherit} review </dev/null`,
+    `codex -m gpt --strict-config -c allow_login_shell=false exec ${inherit} review </dev/null`,
     `codex exec -c allow_login_shell=false -c shell_environment_policy.inherit=core</dev/null`,
     `timeout 900 codex e ${SAFE} review </dev/null`,
   ]) {
@@ -171,13 +171,19 @@ test("codex exec runs only with both env-safety flags, in the quoting forms agen
     `codex exec ${SAFE} -c allow_login_shell=true review </dev/null`,
     `codex exec ${login} -- ${inherit} review </dev/null`,
     `codex e review </dev/null`,
-    `codex --full-auto exec review </dev/null`,
+    `codex --strict-config exec review </dev/null`,
     `bash -lc "codex exec review </dev/null"`,
+    // Not the protected key, an enclosing table set after it, the subcommand glued to its redirection.
+    `codex exec -c '"allow_login_shell"=false' ${inherit} review </dev/null`,
+    `codex exec ${SAFE} -c 'shell_environment_policy={inherit="all"}' review </dev/null`,
+    "codex exec</dev/null",
   ]) {
     expect([cmd, gate(FEATURE, cmd)]).toEqual([cmd, 2]);
   }
   expect(gate(FEATURE, ["bash", "-lc", `codex exec resume --last ${SAFE} review </dev/null`])).toBe(0);
   expect(gate(FEATURE, ["bash", "-lc", "codex exec resume --last review </dev/null"])).toBe(2);
+  // Codex's own argv with a global option first is one command's words, never a shell script.
+  expect(gate(FEATURE, ["codex", "-c", "allow_login_shell=false", "exec", "review"])).toBe(2);
   expect(gate(FEATURE, 'codex "explain exec" </dev/null')).toBe(0);
 });
 

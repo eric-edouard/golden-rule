@@ -89,6 +89,9 @@ export function commands(script: string) {
       if (c === "<" && script[i + 1] !== "&" && !/^\d+$/.test(word.replace(/^0$/, ""))) {
         words.stdin = true; // `<f`, `0<f`, `x</dev/null`: an unquoted `<` (not `<&`, not `3<`) redirects stdin
       }
+      if ((c === "<" || c === ">") && !/^(\d*|&)[<>]*$/.test(word)) {
+        endWord(); // `x</dev/null`: the word ends where its redirection starts
+      }
       word += c;
       started = true;
     }
@@ -325,14 +328,21 @@ function checkCodexExec(launched: string[], stdin: boolean) {
   if (!stdin) {
     deny("`codex exec` with an open stdin waits on it forever. Pass the prompt as an argument and add `</dev/null`.");
   }
-  // Each `-c`/`--config` value, quotes, spaces and a glued `</dev/null` removed; the last one per key wins, as in Codex.
+  // Each `-c`/`--config` key=value (a TOML string's quotes dropped); the last one per key wins, as in Codex, and one
+  // setting a key's enclosing table unsets it.
   const set = new Map<string, string>();
   const end = launched.indexOf("--");
   launched.slice(0, end < 0 ? undefined : end).forEach((w, i) => {
     const v = ["-c", "--config"].includes(launched[i - 1] ?? "") ? w : w.match(/^(?:-c=?|--config=)(.+)$/)?.[1];
-    const [key, ...value] = (v ?? "").replace(/[<>].*$/s, "").replace(/["'\s]/g, "").split("=");
-    if (key && value.length > 0) {
-      set.set(key, value.join("="));
+    const eq = v?.indexOf("=") ?? -1;
+    if (v && eq > 0) {
+      const key = v.slice(0, eq).trim();
+      for (const k of set.keys()) {
+        if (k.startsWith(`${key}.`)) {
+          set.delete(k);
+        }
+      }
+      set.set(key, v.slice(eq + 1).trim().replace(/^(["'])(.*)\1$/, "$2"));
     }
   });
   const missing = CODEX_ENV_FLAGS.filter(([key, value]) => set.get(key) !== value).map(([, , flag]) => flag);
@@ -409,7 +419,7 @@ if (import.meta.main && process.argv[2] === "pre-push") {
     const raw = input.tool_input?.command ?? input.tool_input?.cmd ?? "";
     // Codex sends argv, usually ["bash", "-lc", "<script>"]; other argv is one command's words, never shell syntax.
     const cwd = input.cwd ?? process.cwd();
-    if (Array.isArray(raw) && !(raw.length >= 3 && /^-\w*c$/.test(String(raw[1])))) {
+    if (Array.isArray(raw) && !(raw.length >= 3 && /(^|\/)(ba|z)?sh$/.test(String(raw[0])) && /^-\w*c$/.test(String(raw[1])))) {
       check("", cwd, [raw.map(String)]);
     } else {
       check(Array.isArray(raw) ? String(raw[2]) : String(raw), cwd);

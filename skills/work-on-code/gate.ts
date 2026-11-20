@@ -279,8 +279,16 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
 /** One simple command at a time, following `cd`; `sh -c "<script>"` is checked as its own script. */
 function check(script: string, from: string) {
   let cwd = from;
-  for (const w of commands(script).map(program)) {
+  for (const raw of commands(script)) {
+    const w = program(raw);
     const [cmd, ...args] = w;
+    // `codex`, or `timeout <duration> codex`.
+    const codex = cmd === "timeout" ? w.indexOf("codex") : cmd === "codex" ? 0 : -1;
+    if (codex >= 0 && w[codex + 1] === "exec" && !raw.some((x) => /^0?</.test(x))) {
+      // ponytail: a prompt piped in or given by heredoc is refused too (the splitter keeps neither); the skill passes it
+      // as an argument. A quoted "</dev/null" passes; nobody writes that.
+      deny("`codex exec` with an open stdin waits on it forever. Pass the prompt as an argument and add `</dev/null`.");
+    }
     if (cmd === "cd" && args[0]) {
       cwd = resolve(cwd, args[0].replace(/^~(?=$|\/)/, process.env.HOME ?? "~"));
     } else if (["sh", "bash", "zsh"].includes(cmd ?? "")) {

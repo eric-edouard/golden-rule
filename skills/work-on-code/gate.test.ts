@@ -131,6 +131,16 @@ test("redirections are not arguments", () => {
   expect(gate(MAIN, "git push origin main 2>&1 | tail -3")).toBe(2);
 });
 
+test("codex exec runs only with stdin closed, however it is written", () => {
+  expect(gate(FEATURE, 'codex exec -s read-only "review" </dev/null > out.txt 2>&1')).toBe(0);
+  expect(gate(FEATURE, 'cd /tmp && codex exec "review" 0< /dev/null &')).toBe(0);
+  expect(gate(FEATURE, 'codex exec -s read-only "review" > out.txt 2>&1')).toBe(2);
+  expect(gate(FEATURE, 'timeout 900 codex exec "review" </dev/null')).toBe(0);
+  expect(gate(FEATURE, 'timeout 900 codex exec "review"')).toBe(2);
+  expect(gate(FEATURE, 'sh -c "codex exec review"')).toBe(2);
+  expect(gate(FEATURE, 'echo "codex exec is how a review runs"')).toBe(0);
+});
+
 test("merging two PRs at once, or the wrong one through a flag value, is refused", () => {
   expect(gate(MAIN, "gh pr merge 4 5")).toBe(2);
   expect(gate(MAIN, "gh -R o/r pr merge 4")).toBe(2); // checked (and refused: no such PR here), not skipped

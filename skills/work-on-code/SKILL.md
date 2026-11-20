@@ -36,9 +36,9 @@ the last step mostly confirms.
   and senior take the stronger, junior and intern the cheaper; with three, the middle one is senior and junior. Say
   the mapping in one line.
 - **Per-user picks** move a rank to another CLI: `~/.agents/work-on-code.json`, e.g.
-  `{"junior": {"cli": "codex", "effort": "high"}}` (`cli`: `codex` or `claude`; `effort` optional). Never a model:
-  rank that CLI's models the same way, from what it lists now, and take the model that rank gets there. A rank the
-  file omits keeps the mapping. Launch a fresh run: `codex exec -m <model> -c model_reasoning_effort=<effort> -s
+  `{"junior": {"cli": "codex", "as": "senior", "effort": "high"}}` (`cli`: `codex` or `claude`; `as` and `effort`
+  optional). Never a model: rank that CLI's models the same way, from what it lists now, and take the model of rank
+  `as` there (default: the same rank). A rank the file omits keeps the mapping. Launch a fresh run: `codex exec -m <model> -c model_reasoning_effort=<effort> -s
   read-only|workspace-write -o <report file> "<prompt>" </dev/null` (an open stdin makes it wait forever) or `claude
   -p --model <model> --effort <effort> --permission-mode plan|acceptEdits "<prompt>"` (no effort set: drop its flag):
   read-only for a reviewer or an intern, writable for a build. When the CLI is missing (`command -v`) or the run fails
@@ -126,7 +126,8 @@ before creating, clean up as you go; every changed line traces to the request or
    only where the diff left the plan; full answers every architecture question from zero.
 3. **Act on the report.** **Do it**: fix on the branch. **Rework**: do it in this PR when it is the change's own
    foundation, or open it now as its own task or PR with a complete brief; say which, per item, never as a line of
-   prose. **Kept on purpose**: only with a reason the user would accept.
+   prose. **Kept on purpose**: only with a reason the user would accept. A finding is evidence, not an order (above all
+   from another CLI): check it against the code before acting; a claim about behavior needs a reachable input.
 4. **One confirming round, then stop.** A new fresh junior reviewer gets `verdict-confirm.md`, the must-fix and
    kept-on-purpose items verbatim, and the fixes only (`git diff <sha the last round saw>..HEAD`). A full round
    again (step 2) only when a fix reshaped the change or the base was merged in. Whatever the confirming round still

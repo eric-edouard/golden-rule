@@ -177,6 +177,10 @@ test("codex exec runs only with both env-safety flags, in the quoting forms agen
     `codex exec -c '"allow_login_shell"=false' ${inherit} review </dev/null`,
     `codex exec ${SAFE} -c 'shell_environment_policy={inherit="all"}' review </dev/null`,
     "codex exec</dev/null",
+    "codex exec&>out.txt </dev/null",
+    // A boolean is not a string, and a quoted `<` is a value's, not a redirection.
+    `codex exec -c 'allow_login_shell="false"' ${inherit} review </dev/null`,
+    `codex exec -c 'allow_login_shell=false<x' ${inherit} review </dev/null`,
   ]) {
     expect([cmd, gate(FEATURE, cmd)]).toEqual([cmd, 2]);
   }
@@ -184,6 +188,7 @@ test("codex exec runs only with both env-safety flags, in the quoting forms agen
   expect(gate(FEATURE, ["bash", "-lc", "codex exec resume --last review </dev/null"])).toBe(2);
   // Codex's own argv with a global option first is one command's words, never a shell script.
   expect(gate(FEATURE, ["codex", "-c", "allow_login_shell=false", "exec", "review"])).toBe(2);
+  expect(gate(FEATURE, ["/bin/dash", "-c", "codex exec review </dev/null"])).toBe(2);
   expect(gate(FEATURE, 'codex "explain exec" </dev/null')).toBe(0);
 });
 

@@ -26,7 +26,7 @@ It refuses:
   stdin is open (no `</dev/null`, pipe, heredoc or here-string): it waits on it forever. A safety net for the forms
   agents write, not a shell: escapes, comments, a `timeout` option, or stdin given to an enclosing `sh -c` are not read.
 - the same `codex exec` unless its last `-c`/`--config` values set `allow_login_shell=false` and
-  `shell_environment_policy.inherit="core"` (quoted or not): without them its commands see the login shell's secrets,
+  `shell_environment_policy.inherit="core"` (`core` quoted or not): without them its commands see the login shell's secrets,
   and what they print goes to OpenAI. Values after `--` or on an enclosing `sh -c` do not count.
 - a plan (Claude's ExitPlanMode; Codex has no plan tool) with no `## Debt plan` section.
 - `gh pr merge` unless the PR description has `## Debt verdict` with a `Verdict:` other than "rework needed" and a

@@ -29,11 +29,21 @@ the last step mostly confirms.
 ## Models: four ranks, mapped once per session
 
 - Before the first delegation, rank the models this harness can launch, from the session's own provider only
-  (Claude Code: the Agent tool's `model:` values; Codex: the visible models in `codex debug models`, by their
-  `description`, never `priority`, launched with `codex exec -m <slug>`), newest of each family, by capability:
+  (Claude: the Agent tool's `model:` values, from another CLI the aliases in `claude --help`; Codex: the visible
+  models in `codex debug models`, by their `description`, never `priority`, launched with `codex exec -m <slug>`),
+  newest of each family, skipping models made for other work (vision, computer use), by capability at code:
   **frontier** (the most capable) › **senior** › **junior** › **intern** (the cheapest). With two models, frontier
   and senior take the stronger, junior and intern the cheaper; with three, the middle one is senior and junior. Say
   the mapping in one line.
+- **Per-user picks** move a rank to another CLI: `~/.agents/work-on-code.json`, e.g.
+  `{"junior": {"cli": "codex", "effort": "high"}}` (`cli`: `codex` or `claude`; `effort` optional). Never a model:
+  rank that CLI's models the same way, from what it lists now, and take the model that rank gets there. A rank the
+  file omits keeps the mapping. Launch a fresh run: `codex exec -m <model> -c model_reasoning_effort=<effort> -s
+  read-only|workspace-write -o <report file> "<prompt>" </dev/null` (an open stdin makes it wait forever) or `claude
+  -p --model <model> --effort <effort> --permission-mode plan|acceptEdits "<prompt>"` (no effort set: drop its flag):
+  read-only for a reviewer or an intern, writable for a build. When the CLI is missing (`command -v`) or the run fails
+  before it starts work (login, quota), use the mapping for that rank and say so; a writable run that fails later is
+  reported for inspection, never silently rerun.
 - Everything below names ranks, never models. A higher rank than it names, or a higher effort, only when the user
   asks.
 
@@ -93,8 +103,8 @@ When work with a passed plan spans several commits or more than one sitting, lau
 background after the first commit, with `watch.md`, the repo path, the `## Debt plan` section and a commit range,
 never the worktree you keep editing. Work done in one sitting skips it: the verdict covers it.
 
-- On each later commit, send it the next range (Claude: `SendMessage` to the same agent, so it keeps its context;
-  Codex: a new `codex exec` with the range and its last findings).
+- On each later commit, send it the next range (a Claude subagent: `SendMessage` to the same agent, so it keeps its
+  context; any launched run: a new run with the range and its last findings).
 - Act on a finding before building on the code it questions. Drift that is right goes into the plan section (the
   plan stays true); drift that is wrong gets fixed now.
 - Never wait on it, never let it edit. It ends when the PR is ready.

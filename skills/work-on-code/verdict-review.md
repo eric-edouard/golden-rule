@@ -14,7 +14,7 @@ the plan (everything, with no plan), answer each question in `~/.agents/skills/w
 evidence. Did it reduce debt? Name it. A plan marked small tier: say so if the diff adds a function, type, module or
 concept.
 
-**2. Correctness:** bugs, races, ordering, edge cases, error handling that loses data, security at trust boundaries.
+**2. Correctness:** bugs, races, ordering, reachable edge cases, error handling that loses data, security at trust boundaries.
 
 **3. Tests:** does the logic that matters have a fast test? Name the smallest missing one.
 

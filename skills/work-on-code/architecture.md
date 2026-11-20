@@ -5,7 +5,7 @@ Read by the planner and by every reviewer. A new question goes here, once.
 ## The questions
 
 Answer each with file:line evidence from your own `rg`. A finding needs a reachable input: one real callers produce,
-or one crossing a trust boundary; hardening against inputs nobody writes is lines added for nothing.
+or one crossing a trust boundary; hardening against any other is lines added for nothing.
 
 1. Will any rule or computation be decided in two places (a second place that *composes* shared pieces differently
    counts), or is there a second way of doing what the codebase already does?

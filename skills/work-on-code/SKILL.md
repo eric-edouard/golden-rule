@@ -107,8 +107,8 @@ background after the first commit, with `watch.md`, the repo path, the `## Debt 
 never the worktree you keep editing. Work done in one sitting skips it: the verdict covers it.
 
 - On each later commit, send it the next range (a Claude subagent: `SendMessage` to the same agent, so it keeps its
-  context; Codex: `codex exec resume <session id> -c sandbox_mode='"read-only"'`, the two safety `-c`, `-o <report
-  file> "<next range>" </dev/null`; any other launched run: a new run with the range and its last findings).
+  context; Codex: `codex exec resume <session id> -c sandbox_mode='"read-only"'` with the first run's `-m`, effort
+  and safety `-c`, `-o <report file> "<next range>" </dev/null`; any other launched run: a new run with the range and its last findings).
 - Act on a finding before building on the code it questions. Drift that is right goes into the plan section (the
   plan stays true); drift that is wrong gets fixed now.
 - Never wait on it, never let it edit. It ends when the PR is ready.

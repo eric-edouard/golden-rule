@@ -39,7 +39,9 @@ the last step mostly confirms.
   `{"junior": {"cli": "codex", "as": "senior", "effort": "high"}}` (`cli`: `codex` or `claude`; `as` and `effort`
   optional). Never a model: rank that CLI's models the same way, from what it lists now, and take the model of rank
   `as` there (default: the same rank). A rank the file omits keeps the mapping. Launch a fresh run: `codex exec -m <model> -c model_reasoning_effort=<effort> -s
-  read-only|workspace-write -o <report file> "<prompt>" </dev/null` (an open stdin makes it wait forever) or `claude
+  read-only|workspace-write -c allow_login_shell=false -c 'shell_environment_policy.inherit="core"' -o <report file>
+  "<prompt>" </dev/null` (an open stdin makes it wait forever; without those two `-c`, its tools run in a login shell
+  holding every secret of `~/.zshrc`, and a reviewer that prints the environment sends them to OpenAI) or `claude
   -p --model <model> --effort <effort> --permission-mode plan|acceptEdits "<prompt>"` (no effort set: drop its flag):
   read-only for a reviewer or an intern, writable for a build. When the CLI is missing (`command -v`) or the run fails
   before it starts work (login, quota), use the mapping for that rank and say so; a writable run that fails later is
@@ -105,7 +107,8 @@ background after the first commit, with `watch.md`, the repo path, the `## Debt 
 never the worktree you keep editing. Work done in one sitting skips it: the verdict covers it.
 
 - On each later commit, send it the next range (a Claude subagent: `SendMessage` to the same agent, so it keeps its
-  context; any launched run: a new run with the range and its last findings).
+  context; Codex: `codex exec resume <session id> -c sandbox_mode='"read-only"'`, the two safety `-c`, `-o <report
+  file> "<next range>" </dev/null`; any other launched run: a new run with the range and its last findings).
 - Act on a finding before building on the code it questions. Drift that is right goes into the plan section (the
   plan stays true); drift that is wrong gets fixed now.
 - Never wait on it, never let it edit. It ends when the PR is ready.

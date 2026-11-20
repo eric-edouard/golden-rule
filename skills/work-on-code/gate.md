@@ -28,7 +28,7 @@ It refuses:
 - a plan (Claude's ExitPlanMode; Codex has no plan tool) with no `## Debt plan` section.
 - `gh pr merge` unless the PR description has `## Debt verdict` with a `Verdict:` other than "rework needed" and a
   `Reviewed:` sha equal to the PR's current head, or carried to it across a clean merge of the base (run from the
-  PR's checkout: the head's tree equals `git merge-tree --write-tree <reviewed> origin/<base>`, and the base's new
+  PR's checkout: the head's tree equals `git merge-tree --write-tree <reviewed> <the base's sha on GitHub>`, and the base's new
   commits touch none of the files the reviewed PR changed), and a branch not behind its base (if the base moved,
   merge it in, check, and confirm or redo the verdict); `--auto` also needs `--match-head-commit <the head's sha>`.
   Merges through `gh api` are refused.

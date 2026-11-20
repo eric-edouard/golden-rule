@@ -209,7 +209,7 @@ export function carries(dir: string, reviewed: string, head: string, base: strin
   const merged = run(dir, ["git", "merge-tree", "--write-tree", reviewed, base]);
   const tree = run(dir, ["git", "rev-parse", `${head}^{tree}`]);
   const ours = run(dir, ["git", "diff", "--no-renames", "--name-only", `${base}...${reviewed}`]);
-  const theirs = run(dir, ["git", "log", "--no-renames", "--format=", "--name-only", `${reviewed}..${base}`]);
+  const theirs = run(dir, ["git", "diff", "--no-renames", "--name-only", `${reviewed}...${base}`]);
   if (!tree || merged?.split("\n")[0] !== tree || ours === null || theirs === null) {
     return false;
   }
@@ -285,19 +285,20 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
   if (/rework needed/i.test(verdict)) {
     deny(`${pr.url}'s debt verdict says "rework needed". Do the rework (here or as its own PR) and review again.`);
   }
-  if (!(pr.headRefOid.startsWith(reviewed) || (local && carries(dir, reviewed, pr.headRefOid, `origin/${pr.baseRefName}`)))) {
+  // The base as GitHub has it, never a local ref, which may name another remote's commits or be forged.
+  const repoPath = pr.url.replace(/^https:\/\/github\.com\//, "").replace(/\/pull\/\d+$/, "");
+  const [behind, baseSha] = (run(dir, [
+    "gh", "api", `repos/${repoPath}/compare/${pr.baseRefName}...${pr.headRefOid}`, "-q", "[.behind_by, .base_commit.sha] | @tsv",
+  ]) ?? "").split("\t");
+  if (!(pr.headRefOid.startsWith(reviewed) || (local && baseSha && carries(dir, reviewed, pr.headRefOid, baseSha)))) {
     deny(
       `${pr.url}'s debt verdict is for ${reviewed.slice(0, 12)}, but the PR's head is now ${pr.headRefOid.slice(0, 12)} and is not a clean merge of ${pr.baseRefName} into it that leaves the PR's files alone (checked from the PR's checkout). Review the new commits (work-on-code) and update the verdict.`
     );
   }
-  // The base moved since the review: the merge result was never checked or reviewed.
-  const repoPath = pr.url.replace(/^https:\/\/github\.com\//, "").replace(/\/pull\/\d+$/, "");
-  const behind = run(dir, [
-    "gh", "api", `repos/${repoPath}/compare/${pr.baseRefName}...${pr.headRefOid}`, "-q", ".behind_by",
-  ]);
-  if (behind === null || Number(behind) > 0) {
+  // The base moved since the merge: the result was never checked or reviewed.
+  if (!behind || Number(behind) > 0) {
     deny(
-      `${pr.url} is ${behind ?? "maybe"} commit(s) behind ${pr.baseRefName}: take the landing lock, merge origin/${pr.baseRefName} into the branch, push (the check runs), confirm or redo the verdict (work-on-code), then merge.`
+      `${pr.url} is ${behind || "maybe"} commit(s) behind ${pr.baseRefName}: take the landing lock, merge origin/${pr.baseRefName} into the branch, push (the check runs), confirm or redo the verdict (work-on-code), then merge.`
     );
   }
   const pinned = values.get("--match-head-commit");

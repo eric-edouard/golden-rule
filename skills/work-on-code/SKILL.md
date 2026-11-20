@@ -154,8 +154,8 @@ before creating, clean up as you go; every changed line traces to the request or
    "rework needed" cannot merge. "debt added" can, only when each item is a tracked rework or kept on purpose.
 6. **Land one PR at a time.** Take the repo's landing lock (`land-lock.sh take`, beside this skill; `drop` once merged
    or abandoned), merge `origin/<default>` once, push. A clean merge whose new main commits touch none of the PR's
-   files keeps the verdict (the gate checks it); a junior runs the base round of `verdict-confirm.md`. Otherwise a
-   full round again (step 2). The full check always runs on what lands.
+   files keeps the verdict (the gate checks it); a junior runs the base round of `verdict-confirm.md`. Otherwise, or
+   when the base round finds main touching the PR's names, a full round again (step 2). The full check always runs on what lands.
 7. **Report in this order:** the verdict, the reworks (as tasks or PRs ready to start), the net lines, then the
    merge: merge it yourself when the verdict passes, unless the user's or the repo's rules ask for their OK first.
 

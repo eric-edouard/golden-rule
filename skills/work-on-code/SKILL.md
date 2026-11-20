@@ -36,12 +36,12 @@ the last step mostly confirms.
   the mapping in one line.
 - **Per-user picks** override that mapping rank by rank: `~/.agents/work-on-code.json`, e.g.
   `{"junior": {"cli": "codex", "model": "gpt-6.2-sol", "effort": "high"}}` (`cli`: `codex` or `claude`; `model` and
-  `effort` optional, else that CLI's defaults). A rank it omits keeps the mapping. Launch a fresh run:
-  `codex exec -m <model> -c model_reasoning_effort=<effort> -s <sandbox> -o <report file> "<prompt>" </dev/null` (an
-  open stdin makes it wait forever) or `claude -p --model <model> --effort <effort> "<prompt>"`, read-only for a
-  reviewer or an intern, writable for a build. When the CLI is missing (`command -v`) or the run fails before it
-  starts work (login, quota), use the mapping for that rank and say so; a writable run that fails later is reported
-  for inspection, never silently rerun.
+  `effort` optional: an unset one drops its flag). A rank it omits keeps the mapping. Launch a fresh run:
+  `codex exec -m <model> -c model_reasoning_effort=<effort> -s read-only|workspace-write -o <report file> "<prompt>"
+  </dev/null` (an open stdin makes it wait forever) or `claude -p --model <model> --effort <effort> --permission-mode
+  plan|acceptEdits "<prompt>"`: read-only for a reviewer or an intern, writable for a build. When the CLI is missing
+  (`command -v`) or the run fails before it starts work (login, quota), use the mapping for that rank and say so; a
+  writable run that fails later is reported for inspection, never silently rerun.
 - Everything below names ranks, never models. A higher rank than it names, or a higher effort, only when the user
   asks.
 

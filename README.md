@@ -12,6 +12,6 @@ npx skills add eric-edouard/golden-rule -g
 Works with Claude Code, Codex and the other agents the [skills CLI](https://skills.sh) supports.
 
 `skills/work-on-code/SKILL.md` is the playbook; the files beside it are read only by the agent that needs them
-(reviewer prompts, the architecture questions, the gate). To run some ranks on another CLI (say reviews on
-Codex from Claude Code), list your launchers in `~/.agents/work-on-code.json`, as `SKILL.md` describes. The optional gate hook, `gate.ts`, is described in
-`skills/work-on-code/gate.md`. Tests: `bun test`.
+(reviewer prompts, the architecture questions, the gate). To run some ranks on another CLI (say reviews on Codex
+from Claude Code), list your picks in `~/.agents/work-on-code.json`, as `SKILL.md` describes. The optional gate
+hook, `gate.ts`, is described in `skills/work-on-code/gate.md`. Tests: `bun test`.

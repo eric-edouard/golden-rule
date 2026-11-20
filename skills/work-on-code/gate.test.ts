@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { commands, isData } from "./gate";
+import { carries, commands, isData } from "./gate";
 
 // The gate on throwaway repos: an origin whose default branch is main, a clone on main and one on a feature branch.
 // Run: bun test ~/.agents/skills/work-on-code/gate.test.ts
@@ -192,3 +192,43 @@ test("as git's pre-push hook (any harness): code to main is refused, data, tags 
   sh(repo, `git remote add empty ${join(root, "empty.git")}`);
   expect(push("empty main")).not.toBe(0);
 }, 30_000); // real git pushes through the hook: slower than the 5 s default on a busy Mac
+
+test("a verdict carries across a clean merge of the base that leaves the PR's files alone, and nothing else", () => {
+  const repo = join(root, "carry");
+  sh(root, "git init -q -b main carry");
+  const c = (cmd: string) => sh(repo, cmd.replaceAll("COMMIT", "git -c user.name=t -c user.email=t@t commit -q"));
+  const head = () => Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: repo }).stdout.toString().trim();
+  c("printf '1\\n2\\n3\\n4\\n5\\n' > a.ts && echo b > b.ts && git add -A && COMMIT -m one");
+  c("git checkout -q -b pr && sed -i.bak 1s/1/one/ a.ts && rm a.ts.bak && COMMIT -am pr");
+  const reviewed = head();
+  // main changes another file: merged cleanly, the verdict carries
+  c("git checkout -q main && echo b2 > b.ts && COMMIT -am other && git checkout -q pr && git merge -q --no-edit main");
+  expect(carries(repo, reviewed, head(), "main")).toBe(true);
+  // a commit after the merge changes the PR: stale
+  c("echo c > c.ts && git add c.ts && COMMIT -m extra");
+  expect(carries(repo, reviewed, head(), "main")).toBe(false);
+  // main changes a file the PR changed, far from its lines (a clean merge): stale
+  c("git reset -q --hard HEAD~1 && git checkout -q main && sed -i.bak 5s/5/five/ a.ts && rm a.ts.bak && COMMIT -am same-file");
+  c("git checkout -q pr && git merge -q --no-edit main");
+  expect(carries(repo, reviewed, head(), "main")).toBe(false);
+  // unknown commits are a no
+  expect(carries(repo, "0".repeat(40), head(), "main")).toBe(false);
+});
+
+test("the landing lock: one holder per repo across worktrees, only the holder drops it, a stale lock is taken over", () => {
+  const LOCK = join(import.meta.dir, "land-lock.sh");
+  const repo = join(root, "locked");
+  sh(root, "git clone -q origin.git locked");
+  sh(repo, "git worktree add -q ../locked-b -b b");
+  const env = { HOME: process.env.HOME, PATH: process.env.PATH, TMPDIR: root, LAND_LOCK_POLL: "0.1" };
+  const lock = (cwd: string, op: string, extra = {}) =>
+    Bun.spawnSync(["sh", LOCK, op], { cwd, env: { ...env, ...extra }, timeout: 1000 }).exitCode;
+  expect(lock(repo, "take")).toBe(0);
+  expect(lock(repo, "take")).toBe(0); // the holder again
+  expect(lock(join(root, "locked-b"), "drop")).toBe(1);
+  expect(lock(join(root, "locked-b"), "take")).not.toBe(0); // waits, killed by the timeout
+  sh(root, "touch -t 202001010000 work-on-code-land-*");
+  expect(lock(join(root, "locked-b"), "take")).toBe(0); // stale: taken over
+  expect(lock(join(root, "locked-b"), "drop")).toBe(0);
+  expect(lock(repo, "take")).toBe(0);
+});

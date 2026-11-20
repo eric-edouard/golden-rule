@@ -20,7 +20,8 @@ concept.
 
 **4. Deletion:** dead code, unused exports or options, speculative flexibility, comments that restate code.
 
-Report, ranked: what, where (file:line), the change, net lines. Separate **Do it** (clear wins, and any rule the
+Report, ranked: what, where (file:line), the change, net lines. Name each problem's class and list every instance of
+it in the diff, so one round fixes them all. Separate **Do it** (clear wins, and any rule the
 repo's AGENTS.md sets that the change breaks), **Rework** (architecture changes, each with a short plan and size)
 and **Judgment calls**. End with `Verdict:`, `Plan: matched | drifted: <what> | none (full review)`,
 `Debt reduced:`, `Debt added:`, `Net lines: +a / −d`, `Smaller shape: none (<why>) | <reshape, size>`. Skeptical

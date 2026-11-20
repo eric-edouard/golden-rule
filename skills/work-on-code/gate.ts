@@ -24,11 +24,12 @@ function deny(why: string): never {
 
 /**
  * The simple commands of a script: split on ; && || | & and newlines outside quotes, as words with quotes removed.
- * A heredoc's body is text, not commands, and is skipped.
+ * A heredoc's body is text, not commands, and is skipped. `stdin`: the command's input is not the caller's (an
+ * unquoted `<` redirection, a heredoc or here-string, or a pipe into it).
  */
 export function commands(script: string) {
-  const out: string[][] = [];
-  let words: string[] = [];
+  const out: (string[] & { stdin?: true })[] = [];
+  let words: string[] & { stdin?: true } = [];
   let word = "";
   let quote = "";
   let started = false;
@@ -55,9 +56,14 @@ export function commands(script: string) {
       } else {
         word += c;
       }
-    } else if (c === "<" && script[i + 1] === "<" && script[i + 2] !== "<") {
+    } else if (c === "<" && script.startsWith("<<<", i)) {
+      words.stdin = true; // a here-string; its word follows
+      endWord();
+      i += 2;
+    } else if (c === "<" && script[i + 1] === "<") {
       const m = script.slice(i + 2).match(/^-?\s*(['"]?)([A-Za-z_][\w-]*)\1/);
       heredoc = m?.[2] ?? "";
+      words.stdin = true;
       i += 1 + (m?.[0].length ?? 0);
     } else if (c === "\n" && heredoc) {
       // Skip the body up to the line holding only the delimiter.
@@ -76,7 +82,13 @@ export function commands(script: string) {
       started = true;
     } else if (c === ";" || c === "\n" || c === "|" || c === "&") {
       endCommand();
+      if (c === "|" && script[i - 1] !== "|" && script[i + 1] !== "|") {
+        words.stdin = true; // piped into
+      }
     } else {
+      if (c === "<" && script[i + 1] !== "&") {
+        words.stdin = true; // `<f`, `0<f`, `x</dev/null`: an unquoted `<` (not `<&`) is stdin's redirection
+      }
       word += c;
       started = true;
     }
@@ -282,11 +294,9 @@ function check(script: string, from: string) {
   for (const raw of commands(script)) {
     const w = program(raw);
     const [cmd, ...args] = w;
-    // `codex`, or `timeout <duration> codex`.
-    const codex = cmd === "timeout" ? w.indexOf("codex") : cmd === "codex" ? 0 : -1;
-    if (codex >= 0 && w[codex + 1] === "exec" && !raw.some((x) => /^0?</.test(x))) {
-      // ponytail: a prompt piped in or given by heredoc is refused too (the splitter keeps neither); the skill passes it
-      // as an argument. A quoted "</dev/null" passes; nobody writes that.
+    // The program `timeout [options] <duration>` runs, else the command's own.
+    const launched = cmd === "timeout" ? w.slice(w.findIndex((x, i) => i > 0 && !x.startsWith("-")) + 1) : w;
+    if (launched[0] === "codex" && launched[1] === "exec" && !raw.stdin) {
       deny("`codex exec` with an open stdin waits on it forever. Pass the prompt as an argument and add `</dev/null`.");
     }
     if (cmd === "cd" && args[0]) {

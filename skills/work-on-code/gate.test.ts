@@ -139,6 +139,14 @@ test("codex exec runs only with stdin closed, however it is written", () => {
   expect(gate(FEATURE, 'timeout 900 codex exec "review"')).toBe(2);
   expect(gate(FEATURE, 'sh -c "codex exec review"')).toBe(2);
   expect(gate(FEATURE, 'echo "codex exec is how a review runs"')).toBe(0);
+  // A prompt that only looks like a redirection is no redirection; a pipe, heredoc or here-string feeds stdin.
+  expect(gate(FEATURE, 'codex exec "<task>review</task>"')).toBe(2);
+  expect(gate(FEATURE, "codex exec review</dev/null")).toBe(0);
+  expect(gate(FEATURE, "cat prompt.md | codex exec -")).toBe(0);
+  expect(gate(FEATURE, "codex exec - <<'EOF'\nreview\nEOF")).toBe(0);
+  expect(gate(MAIN, "codex exec - <<< review; git push origin main")).toBe(2);
+  expect(gate(FEATURE, "false || codex exec review")).toBe(2);
+  expect(gate(FEATURE, "timeout 5 printf '%s' codex exec")).toBe(0);
 });
 
 test("merging two PRs at once, or the wrong one through a flag value, is refused", () => {

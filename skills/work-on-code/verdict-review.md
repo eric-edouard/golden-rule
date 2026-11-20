@@ -14,7 +14,7 @@ the plan (everything, with no plan), answer each question in `~/.agents/skills/w
 evidence. Did it reduce debt? Name it. A plan marked small tier: say so if the diff adds a function, type, module or
 concept.
 
-**2. Correctness:** bugs, races, ordering, edge cases, error handling that loses data, security at trust boundaries.
+**2. Correctness:** bugs, races, ordering, reachable edge cases, error handling that loses data, security at trust boundaries.
 
 **3. Tests:** does the logic that matters have a fast test? Name the smallest missing one.
 
@@ -23,5 +23,5 @@ concept.
 Report, ranked: what, where (file:line), the change, net lines. Separate **Do it** (clear wins, and any rule the
 repo's AGENTS.md sets that the change breaks), **Rework** (architecture changes, each with a short plan and size)
 and **Judgment calls**. End with `Verdict:`, `Plan: matched | drifted: <what> | none (full review)`,
-`Debt reduced:`, `Debt added:`, `Net lines: +a / −d`. Skeptical and specific, no style nits. Under 800 words plus
-the inventory.
+`Debt reduced:`, `Debt added:`, `Net lines: +a / −d`, `Smaller shape: none (<why>) | <reshape, size>`. Skeptical
+and specific, no style nits. Under 800 words plus the inventory.

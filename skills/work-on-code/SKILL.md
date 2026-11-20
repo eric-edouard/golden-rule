@@ -11,7 +11,7 @@ description: >
 
 # work-on-code
 
-**Every change leaves less technical debt than before, features included.** Net-zero or negative lines is the goal;
+**Every change leaves less technical debt than before, features included.** Negative net lines is the target;
 deleting code is the best outcome. Debt is decided while planning (a merge review that finds a rule decided in two
 places finds it after the code is built on it), so the debt angle runs before code, beside it and before merge, and
 the last step mostly confirms.
@@ -141,6 +141,7 @@ before creating, clean up as you go; every changed line traces to the request or
    Verdict: debt reduced | no debt added | debt added | rework needed
    Plan: matched | drifted: <what, and whether the plan was updated> | none (full review)
    Net lines: +<added> / −<deleted>
+   Smaller shape: none (<why no reshape lands it smaller>) | <the reshape, as a rework>
    Debt reduced: <what was unified or deleted, or "none">
    Debt added: <each item, or "none">
    Reworks: <each item with its task or PR link, or "none">

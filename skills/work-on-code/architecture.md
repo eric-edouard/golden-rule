@@ -2,6 +2,11 @@
 
 Read by the planner and by every reviewer. A new question goes here, once.
 
+**The golden rule decides:** no debt added, ever, and negative net lines is the target. A change that adds lines
+(a feature often must) says why no shape lands it smaller, or names the reshape that would and what it deletes.
+**Real inputs only:** a finding needs an input this code's callers actually produce. Hardening against inputs nobody
+writes (exotic syntax, adversarial strings, theoretical races) is lines added for nothing: never ask for it.
+
 ## The questions
 
 Answer each with file:line evidence from your own `rg`.
@@ -17,7 +22,7 @@ Answer each with file:line evidence from your own `rg`.
 7. A workaround: a special case for one input, a flag switching behavior, a retry or try-catch hiding an ordering bug?
 8. Does each new name say what it is, one word per concept (below)?
 9. Is a decision this relies on written in the repo's AGENTS.md?
-10. Is there a shape that lands it at fewer net lines? What does it delete?
+10. Is there a shape that lands it at fewer net lines? What does it delete? None: say why.
 
 ## Names are architecture
 

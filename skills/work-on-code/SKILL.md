@@ -141,6 +141,7 @@ before creating, clean up as you go; every changed line traces to the request or
    Verdict: debt reduced | no debt added | debt added | rework needed
    Plan: matched | drifted: <what, and whether the plan was updated> | none (full review)
    Net lines: +<added> / −<deleted>
+   Smaller shape: none (<why no reshape lands it smaller>) | <the reshape, as a rework>
    Debt reduced: <what was unified or deleted, or "none">
    Debt added: <each item, or "none">
    Reworks: <each item with its task or PR link, or "none">

@@ -23,7 +23,8 @@ often run without `~/.bun/bin` on their PATH, and a hook that cannot start lets 
 It refuses:
 
 - `codex exec` (or `timeout <duration> codex exec`) whose stdin is open (no `</dev/null`, pipe, heredoc or
-  here-string): it waits on it forever.
+  here-string): it waits on it forever. A safety net for the forms agents write, not a shell: escapes, comments, a
+  `timeout` option, or stdin given to an enclosing `sh -c` are not read.
 - a plan (Claude's ExitPlanMode; Codex has no plan tool) with no `## Debt plan` section.
 - `gh pr merge` unless the PR description has `## Debt verdict` with a `Verdict:` other than "rework needed" and a
   `Reviewed:` sha equal to the PR's current head, and a branch not behind its base (if the base moved, merge it in,

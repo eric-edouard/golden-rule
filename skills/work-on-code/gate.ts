@@ -86,8 +86,8 @@ export function commands(script: string) {
         words.stdin = true; // piped into
       }
     } else {
-      if (c === "<" && script[i + 1] !== "&") {
-        words.stdin = true; // `<f`, `0<f`, `x</dev/null`: an unquoted `<` (not `<&`) is stdin's redirection
+      if (c === "<" && script[i + 1] !== "&" && !/^\d+$/.test(word.replace(/^0$/, ""))) {
+        words.stdin = true; // `<f`, `0<f`, `x</dev/null`: an unquoted `<` (not `<&`, not `3<`) redirects stdin
       }
       word += c;
       started = true;
@@ -294,8 +294,8 @@ function check(script: string, from: string) {
   for (const raw of commands(script)) {
     const w = program(raw);
     const [cmd, ...args] = w;
-    // The program `timeout [options] <duration>` runs, else the command's own.
-    const launched = cmd === "timeout" ? w.slice(w.findIndex((x, i) => i > 0 && !x.startsWith("-")) + 1) : w;
+    // The program `timeout <duration>` runs (options before the duration are not read), else the command's own.
+    const launched = cmd === "timeout" ? w.slice(2) : w;
     if (launched[0] === "codex" && launched[1] === "exec" && !raw.stdin) {
       deny("`codex exec` with an open stdin waits on it forever. Pass the prompt as an argument and add `</dev/null`.");
     }
@@ -359,7 +359,10 @@ if (import.meta.main && process.argv[2] === "pre-push") {
     let script = String(raw);
     if (Array.isArray(raw)) {
       script =
-        raw.length >= 3 && /^-\w*c$/.test(String(raw[1])) ? String(raw[2]) : raw.map(String).join(" ");
+        raw.length >= 3 && /^-\w*c$/.test(String(raw[1]))
+          ? String(raw[2])
+          : // Plain argv: each word quoted, so none reads as shell syntax (`commands` knows no escapes).
+            raw.map((a) => (String(a).includes("'") ? `"${a}"` : `'${a}'`)).join(" ");
     }
     check(script, input.cwd ?? process.cwd());
   } catch (e) {

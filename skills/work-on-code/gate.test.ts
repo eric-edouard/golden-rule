@@ -131,7 +131,7 @@ test("redirections are not arguments", () => {
   expect(gate(MAIN, "git push origin main 2>&1 | tail -3")).toBe(2);
 });
 
-test("codex exec runs only with stdin closed, however it is written", () => {
+test("codex exec runs only with its stdin redirected, piped or supplied, in the forms agents write", () => {
   expect(gate(FEATURE, 'codex exec -s read-only "review" </dev/null > out.txt 2>&1')).toBe(0);
   expect(gate(FEATURE, 'cd /tmp && codex exec "review" 0< /dev/null &')).toBe(0);
   expect(gate(FEATURE, 'codex exec -s read-only "review" > out.txt 2>&1')).toBe(2);
@@ -147,6 +147,10 @@ test("codex exec runs only with stdin closed, however it is written", () => {
   expect(gate(MAIN, "codex exec - <<< review; git push origin main")).toBe(2);
   expect(gate(FEATURE, "false || codex exec review")).toBe(2);
   expect(gate(FEATURE, "timeout 5 printf '%s' codex exec")).toBe(0);
+  expect(gate(FEATURE, "codex exec review 3</dev/null")).toBe(2);
+  // Codex's plain argv: a prompt word is never shell syntax.
+  expect(gate(FEATURE, ["codex", "exec", "<task>review</task>"])).toBe(2);
+  expect(gate(FEATURE, ["bash", "-lc", "codex exec review </dev/null"])).toBe(0);
 });
 
 test("merging two PRs at once, or the wrong one through a flag value, is refused", () => {

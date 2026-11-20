@@ -307,6 +307,42 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
   }
 }
 
+/** What every `codex exec` must set, so its commands never see the login shell's secrets: key, value, the flag to add. */
+const CODEX_ENV_FLAGS = [
+  ["allow_login_shell", "false", "-c allow_login_shell=false"],
+  ["shell_environment_policy.inherit", "core", `-c 'shell_environment_policy.inherit="core"'`],
+] as const;
+
+/** Refuses a `codex exec` (or `codex e`, global options first) with an open stdin or without CODEX_ENV_FLAGS. */
+function checkCodexExec(launched: string[], stdin: boolean) {
+  // `exec` or `e` after nothing but options and their values (a boolean option's next word counts as one: fail closed).
+  const isExec = launched.some(
+    (w, i) => (w === "exec" || w === "e") && launched.slice(1, i).every((x, j) => x.startsWith("-") || launched[j]?.startsWith("-"))
+  );
+  if (launched[0] !== "codex" || !isExec) {
+    return;
+  }
+  if (!stdin) {
+    deny("`codex exec` with an open stdin waits on it forever. Pass the prompt as an argument and add `</dev/null`.");
+  }
+  // Each `-c`/`--config` value, quotes, spaces and a glued `</dev/null` removed; the last one per key wins, as in Codex.
+  const set = new Map<string, string>();
+  const end = launched.indexOf("--");
+  launched.slice(0, end < 0 ? undefined : end).forEach((w, i) => {
+    const v = ["-c", "--config"].includes(launched[i - 1] ?? "") ? w : w.match(/^(?:-c=?|--config=)(.+)$/)?.[1];
+    const [key, ...value] = (v ?? "").replace(/[<>].*$/s, "").replace(/["'\s]/g, "").split("=");
+    if (key && value.length > 0) {
+      set.set(key, value.join("="));
+    }
+  });
+  const missing = CODEX_ENV_FLAGS.filter(([key, value]) => set.get(key) !== value).map(([, , flag]) => flag);
+  if (missing.length > 0) {
+    deny(
+      `\`codex exec\` without ${missing.join(" and ")} runs its commands with your login shell's environment, secrets included, and sends what they print to OpenAI. Add: ${missing.join(" ")}`
+    );
+  }
+}
+
 /** One simple command at a time, following `cd`; `sh -c "<script>"` is checked as its own script. */
 function check(script: string, from: string, split = commands(script)) {
   let cwd = from;
@@ -314,10 +350,7 @@ function check(script: string, from: string, split = commands(script)) {
     const w = program(raw);
     const [cmd, ...args] = w;
     // The program `timeout <duration>` runs (options before the duration are not read), else the command's own.
-    const launched = cmd === "timeout" ? w.slice(2) : w;
-    if (launched[0] === "codex" && launched[1] === "exec" && !raw.stdin) {
-      deny("`codex exec` with an open stdin waits on it forever. Pass the prompt as an argument and add `</dev/null`.");
-    }
+    checkCodexExec(cmd === "timeout" ? w.slice(2) : w, raw.stdin === true);
     if (cmd === "cd" && args[0]) {
       cwd = resolve(cwd, args[0].replace(/^~(?=$|\/)/, process.env.HOME ?? "~"));
     } else if (["sh", "bash", "zsh"].includes(cmd ?? "")) {

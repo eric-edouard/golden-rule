@@ -2,14 +2,10 @@
 
 Read by the planner and by every reviewer. A new question goes here, once.
 
-**The golden rule decides:** no debt added, ever, and negative net lines is the target. A change that adds lines
-(a feature often must) says why no shape lands it smaller, or names the reshape that would and what it deletes.
-**Real inputs only:** a finding needs an input this code's callers actually produce. Hardening against inputs nobody
-writes (exotic syntax, adversarial strings, theoretical races) is lines added for nothing: never ask for it.
-
 ## The questions
 
-Answer each with file:line evidence from your own `rg`.
+Answer each with file:line evidence from your own `rg`. A finding needs a reachable input: one real callers produce,
+or one crossing a trust boundary; hardening against inputs nobody writes is lines added for nothing.
 
 1. Will any rule or computation be decided in two places (a second place that *composes* shared pieces differently
    counts), or is there a second way of doing what the codebase already does?
@@ -22,7 +18,8 @@ Answer each with file:line evidence from your own `rg`.
 7. A workaround: a special case for one input, a flag switching behavior, a retry or try-catch hiding an ordering bug?
 8. Does each new name say what it is, one word per concept (below)?
 9. Is a decision this relies on written in the repo's AGENTS.md?
-10. Is there a shape that lands it at fewer net lines? What does it delete? None: say why.
+10. Is there a shape that lands it at fewer net lines (negative is the target)? What does it delete? A change that
+    adds lines says why none would.
 
 ## Names are architecture
 

@@ -150,6 +150,8 @@ test("codex exec runs only with its stdin redirected, piped or supplied, in the 
   expect(gate(FEATURE, "codex exec review 3</dev/null")).toBe(2);
   // Codex's plain argv: a prompt word is never shell syntax.
   expect(gate(FEATURE, ["codex", "exec", "<task>review</task>"])).toBe(2);
+  expect(gate(FEATURE, ["codex", "exec", `it's "<b>" review`])).toBe(2);
+  expect(gate(MAIN, ["git", "push", "origin", "main"])).toBe(2);
   expect(gate(FEATURE, ["bash", "-lc", "codex exec review </dev/null"])).toBe(0);
 });
 

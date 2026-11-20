@@ -289,9 +289,9 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
 }
 
 /** One simple command at a time, following `cd`; `sh -c "<script>"` is checked as its own script. */
-function check(script: string, from: string) {
+function check(script: string, from: string, split = commands(script)) {
   let cwd = from;
-  for (const raw of commands(script)) {
+  for (const raw of split) {
     const w = program(raw);
     const [cmd, ...args] = w;
     // The program `timeout <duration>` runs (options before the duration are not read), else the command's own.
@@ -355,16 +355,13 @@ if (import.meta.main && process.argv[2] === "pre-push") {
       process.exit(0);
     }
     const raw = input.tool_input?.command ?? input.tool_input?.cmd ?? "";
-    // Codex sends argv, usually ["bash", "-lc", "<script>"].
-    let script = String(raw);
-    if (Array.isArray(raw)) {
-      script =
-        raw.length >= 3 && /^-\w*c$/.test(String(raw[1]))
-          ? String(raw[2])
-          : // Plain argv: each word quoted, so none reads as shell syntax (`commands` knows no escapes).
-            raw.map((a) => (String(a).includes("'") ? `"${a}"` : `'${a}'`)).join(" ");
+    // Codex sends argv, usually ["bash", "-lc", "<script>"]; other argv is one command's words, never shell syntax.
+    const cwd = input.cwd ?? process.cwd();
+    if (Array.isArray(raw) && !(raw.length >= 3 && /^-\w*c$/.test(String(raw[1])))) {
+      check("", cwd, [raw.map(String)]);
+    } else {
+      check(Array.isArray(raw) ? String(raw[2]) : String(raw), cwd);
     }
-    check(script, input.cwd ?? process.cwd());
   } catch (e) {
     // A gate that crashes must not let the command through.
     deny(`could not check this command (${(e as Error).message}).`);

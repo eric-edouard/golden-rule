@@ -30,18 +30,20 @@ the last step mostly confirms.
 
 - Before the first delegation, rank the models this harness can launch, from the session's own provider only
   (Claude Code: the Agent tool's `model:` values; Codex: the visible models in `codex debug models`, by their
-  `description`, never `priority`, launched with `codex exec -m <slug>`), newest of each family, by capability:
+  `description`, never `priority`, launched with `codex exec -m <slug>`), newest of each family, skipping models
+  made for other work (vision, computer use), by capability at code:
   **frontier** (the most capable) › **senior** › **junior** › **intern** (the cheapest). With two models, frontier
   and senior take the stronger, junior and intern the cheaper; with three, the middle one is senior and junior. Say
   the mapping in one line.
-- **Per-user picks** override that mapping rank by rank: `~/.agents/work-on-code.json`, e.g.
-  `{"junior": {"cli": "codex", "model": "gpt-6.2-sol", "effort": "high"}}` (`cli`: `codex` or `claude`; `model` and
-  `effort` optional: an unset one drops its flag). A rank it omits keeps the mapping. Launch a fresh run:
-  `codex exec -m <model> -c model_reasoning_effort=<effort> -s read-only|workspace-write -o <report file> "<prompt>"
-  </dev/null` (an open stdin makes it wait forever) or `claude -p --model <model> --effort <effort> --permission-mode
-  plan|acceptEdits "<prompt>"`: read-only for a reviewer or an intern, writable for a build. When the CLI is missing
-  (`command -v`) or the run fails before it starts work (login, quota), use the mapping for that rank and say so; a
-  writable run that fails later is reported for inspection, never silently rerun.
+- **Per-user picks** move a rank to another CLI: `~/.agents/work-on-code.json`, e.g.
+  `{"junior": {"cli": "codex", "effort": "high"}}` (`cli`: `codex` or `claude`; `effort` optional). Never a model:
+  rank that CLI's models the same way, from what it lists now, and take the model that rank gets there. A rank the
+  file omits keeps the mapping. Launch a fresh run: `codex exec -m <model> -c model_reasoning_effort=<effort> -s
+  read-only|workspace-write -o <report file> "<prompt>" </dev/null` (an open stdin makes it wait forever) or `claude
+  -p --model <model> --effort <effort> --permission-mode plan|acceptEdits "<prompt>"` (no effort set: drop its flag):
+  read-only for a reviewer or an intern, writable for a build. When the CLI is missing (`command -v`) or the run fails
+  before it starts work (login, quota), use the mapping for that rank and say so; a writable run that fails later is
+  reported for inspection, never silently rerun.
 - Everything below names ranks, never models. A higher rank than it names, or a higher effort, only when the user
   asks.
 

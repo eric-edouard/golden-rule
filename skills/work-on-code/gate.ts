@@ -24,11 +24,12 @@ function deny(why: string): never {
 
 /**
  * The simple commands of a script: split on ; && || | & and newlines outside quotes, as words with quotes removed.
- * A heredoc's body is text, not commands, and is skipped.
+ * A heredoc's body is text, not commands, and is skipped. `stdin`: the command's input is not the caller's (an
+ * unquoted `<` redirection, a heredoc or here-string, or a pipe into it).
  */
 export function commands(script: string) {
-  const out: string[][] = [];
-  let words: string[] = [];
+  const out: (string[] & { stdin?: true })[] = [];
+  let words: string[] & { stdin?: true } = [];
   let word = "";
   let quote = "";
   let started = false;
@@ -55,9 +56,14 @@ export function commands(script: string) {
       } else {
         word += c;
       }
-    } else if (c === "<" && script[i + 1] === "<" && script[i + 2] !== "<") {
+    } else if (c === "<" && script.startsWith("<<<", i)) {
+      words.stdin = true; // a here-string; its word follows
+      endWord();
+      i += 2;
+    } else if (c === "<" && script[i + 1] === "<") {
       const m = script.slice(i + 2).match(/^-?\s*(['"]?)([A-Za-z_][\w-]*)\1/);
       heredoc = m?.[2] ?? "";
+      words.stdin = true;
       i += 1 + (m?.[0].length ?? 0);
     } else if (c === "\n" && heredoc) {
       // Skip the body up to the line holding only the delimiter.
@@ -76,7 +82,13 @@ export function commands(script: string) {
       started = true;
     } else if (c === ";" || c === "\n" || c === "|" || c === "&") {
       endCommand();
+      if (c === "|" && script[i - 1] !== "|" && script[i + 1] !== "|") {
+        words.stdin = true; // piped into
+      }
     } else {
+      if (c === "<" && script[i + 1] !== "&" && !/^\d+$/.test(word.replace(/^0$/, ""))) {
+        words.stdin = true; // `<f`, `0<f`, `x</dev/null`: an unquoted `<` (not `<&`, not `3<`) redirects stdin
+      }
       word += c;
       started = true;
     }
@@ -277,10 +289,16 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
 }
 
 /** One simple command at a time, following `cd`; `sh -c "<script>"` is checked as its own script. */
-function check(script: string, from: string) {
+function check(script: string, from: string, split = commands(script)) {
   let cwd = from;
-  for (const w of commands(script).map(program)) {
+  for (const raw of split) {
+    const w = program(raw);
     const [cmd, ...args] = w;
+    // The program `timeout <duration>` runs (options before the duration are not read), else the command's own.
+    const launched = cmd === "timeout" ? w.slice(2) : w;
+    if (launched[0] === "codex" && launched[1] === "exec" && !raw.stdin) {
+      deny("`codex exec` with an open stdin waits on it forever. Pass the prompt as an argument and add `</dev/null`.");
+    }
     if (cmd === "cd" && args[0]) {
       cwd = resolve(cwd, args[0].replace(/^~(?=$|\/)/, process.env.HOME ?? "~"));
     } else if (["sh", "bash", "zsh"].includes(cmd ?? "")) {
@@ -337,13 +355,13 @@ if (import.meta.main && process.argv[2] === "pre-push") {
       process.exit(0);
     }
     const raw = input.tool_input?.command ?? input.tool_input?.cmd ?? "";
-    // Codex sends argv, usually ["bash", "-lc", "<script>"].
-    let script = String(raw);
-    if (Array.isArray(raw)) {
-      script =
-        raw.length >= 3 && /^-\w*c$/.test(String(raw[1])) ? String(raw[2]) : raw.map(String).join(" ");
+    // Codex sends argv, usually ["bash", "-lc", "<script>"]; other argv is one command's words, never shell syntax.
+    const cwd = input.cwd ?? process.cwd();
+    if (Array.isArray(raw) && !(raw.length >= 3 && /^-\w*c$/.test(String(raw[1])))) {
+      check("", cwd, [raw.map(String)]);
+    } else {
+      check(Array.isArray(raw) ? String(raw[2]) : String(raw), cwd);
     }
-    check(script, input.cwd ?? process.cwd());
   } catch (e) {
     // A gate that crashes must not let the command through.
     deny(`could not check this command (${(e as Error).message}).`);

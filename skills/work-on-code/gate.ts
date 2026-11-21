@@ -206,21 +206,53 @@ export function checkPrePush(dir: string, remote: string, lines: string) {
   }
 }
 
+/** How close (in lines) the base's change may come to the PR's own lines and still carry the verdict. */
+const NEAR = 3;
+
+/** Each changed file of a `-U0 --no-renames` diff (keyed by its `diff --git` line) as merge-base line spans; a mode change or a file with no hunk (binary) spans everything. */
+function spansOf(diff: string) {
+  const files = new Map<string, number[][]>();
+  let spans: number[][] = [];
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      spans = [];
+      files.set(line, spans);
+    }
+    if (/^(old|new|new file|deleted file) mode /.test(line)) {
+      spans.push([0, Number.POSITIVE_INFINITY]);
+    }
+    const hunk = /^@@ -(\d+)(?:,(\d+))?/.exec(line);
+    if (hunk) {
+      const start = Number(hunk[1]);
+      spans.push([start, start + Math.max(Number(hunk[2] ?? 1), 1) - 1]);
+    }
+  }
+  for (const s of files.values()) {
+    if (s.length === 0) {
+      s.push([0, Number.POSITIVE_INFINITY]);
+    }
+  }
+  return files;
+}
+
 /**
  * Whether a verdict of `reviewed` still holds at `head`: `head` holds exactly `reviewed` merged cleanly with `base`
- * (the same tree), and the base's commits since touch none of the files the reviewed PR changed (renames count as
- * both paths). Read from local git; anything it cannot read is a no.
+ * (the same tree), and no hunk the base brought in lies within `NEAR` lines of the PR's own changed lines (both
+ * diffs count lines in the merge base). Read from local git; anything it cannot read is a no.
  */
 export function carries(dir: string, reviewed: string, head: string, base: string) {
+  const diff = (range: string) => run(dir, ["git", "diff", "-U0", "--inter-hunk-context=0", "--no-renames", "--no-color", "--no-ext-diff", "--no-textconv", range]);
   const merged = run(dir, ["git", "merge-tree", "--write-tree", reviewed, base]);
   const tree = run(dir, ["git", "rev-parse", `${head}^{tree}`]);
-  const ours = run(dir, ["git", "diff", "--no-renames", "--name-only", `${base}...${reviewed}`]);
-  const theirs = run(dir, ["git", "diff", "--no-renames", "--name-only", `${reviewed}...${base}`]);
+  const ours = diff(`${base}...${reviewed}`);
+  const theirs = diff(`${reviewed}...${base}`);
   if (!tree || merged?.split("\n")[0] !== tree || ours === null || theirs === null) {
     return false;
   }
-  const touched = new Set(theirs.split("\n"));
-  return !ours.split("\n").some((f) => f !== "" && touched.has(f));
+  const mine = spansOf(ours);
+  return [...spansOf(theirs)].every(([file, spans]) =>
+    spans.every(([a = 0, b = 0]) => !(mine.get(file) ?? []).some(([c = 0, d = 0]) => a <= d + NEAR && c <= b + NEAR))
+  );
 }
 
 /** `gh` flags that take a value, so the value is not mistaken for the PR. */
@@ -298,7 +330,7 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
   ]) ?? "").split("\t");
   if (!(pr.headRefOid.startsWith(reviewed) || (local && baseSha && carries(dir, reviewed, pr.headRefOid, baseSha)))) {
     deny(
-      `${pr.url}'s debt verdict is for ${reviewed.slice(0, 12)}, but the PR's head is now ${pr.headRefOid.slice(0, 12)} and is not a clean merge of ${pr.baseRefName} into it that leaves the PR's files alone (checked from the PR's checkout). Review the new commits (work-on-code) and update the verdict.`
+      `${pr.url}'s debt verdict is for ${reviewed.slice(0, 12)}, but the PR's head is now ${pr.headRefOid.slice(0, 12)} and is not a clean merge of ${pr.baseRefName} into it whose changes stay more than ${NEAR} lines from the PR's own (checked from the PR's checkout). Review the new commits (work-on-code) and update the verdict.`
     );
   }
   // The base moved since the merge: the result was never checked or reviewed.

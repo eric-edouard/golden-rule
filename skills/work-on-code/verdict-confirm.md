@@ -7,6 +7,6 @@ places that define or decide it. For each finding: fixed, not fixed, or fixed in
 copy, a special case, a workaround), with file:line. Then any new bug real inputs hit, or debt, the fixes bring; nothing else. End
 with `Must-fix left: <each, or "none">`. Under 400 words.
 
-**Base round** (after a clean merge of main): you get the PR's inventory names and what main brought in (`git diff
-<reviewed sha>..HEAD`). Check none of it defines, decides or calls what those names cover. End with `Base: clean`
-or `Base: touches <name>, file:line`.
+**Base round** (after a clean merge of main): you get only what main changed in the PR's files (`git diff <reviewed
+sha>..HEAD -- <the PR's files>`). Check none of it changes what the PR's lines define, decide or call. End with
+`Base: clean` or `Base: touches <name>, file:line`.

@@ -254,7 +254,7 @@ test("as git's pre-push hook (any harness): code to main is refused, data, tags 
   expect(push("empty main")).not.toBe(0);
 }, 30_000); // real git pushes through the hook: slower than the 5 s default on a busy Mac
 
-test("a verdict carries across a clean merge of the base that leaves the PR's files alone, and nothing else", () => {
+test("a verdict carries across a clean merge of the base whose hunks stay more than 3 lines from the PR's, and nothing else", () => {
   const repo = join(root, "carry");
   sh(root, "git init -q -b main carry");
   const c = (cmd: string) => sh(repo, cmd.replaceAll("COMMIT", "git -c user.name=t -c user.email=t@t commit -q"));
@@ -268,10 +268,17 @@ test("a verdict carries across a clean merge of the base that leaves the PR's fi
   // a commit after the merge changes the PR: stale
   c("echo c > c.ts && git add c.ts && COMMIT -m extra");
   expect(carries(repo, reviewed, head(), "main")).toBe(false);
-  // main changes a file the PR changed, far from its lines (a clean merge): stale
-  c("git reset -q --hard HEAD~1 && git checkout -q main && sed -i.bak 5s/5/five/ a.ts && rm a.ts.bak && COMMIT -am same-file");
+  // main changes the PR's file 4 lines from its change (line 5 vs 1): carries
+  c("git reset -q --hard HEAD~1 && git checkout -q main && sed -i.bak 5s/5/five/ a.ts && rm a.ts.bak && COMMIT -am far");
+  c("git checkout -q pr && git merge -q --no-edit main");
+  expect(carries(repo, reviewed, head(), "main")).toBe(true);
+  // 3 lines from it (line 4), still a clean merge: stale
+  c("git checkout -q main && sed -i.bak 4s/4/four/ a.ts && rm a.ts.bak && COMMIT -am near");
   c("git checkout -q pr && git merge -q --no-edit main");
   expect(carries(repo, reviewed, head(), "main")).toBe(false);
+  // a mode change on the PR's file counts as the whole file, even beside a far edit: stale
+  c(`git checkout -q -b base2 ${reviewed}~1 && chmod +x a.ts && sed -i.bak 5s/5/five/ a.ts && rm a.ts.bak && COMMIT -am mode && git checkout -q -b pr2 ${reviewed} && git merge -q --no-edit base2`);
+  expect(carries(repo, reviewed, head(), "base2")).toBe(false);
   // unknown commits are a no
   expect(carries(repo, "0".repeat(40), head(), "main")).toBe(false);
 });
@@ -282,8 +289,8 @@ test("the landing lock: one holder per repo across worktrees, only the holder dr
   sh(root, "git clone -q origin.git locked");
   sh(repo, "git worktree add -q ../locked-b -b b");
   const env = { HOME: process.env.HOME, PATH: process.env.PATH, TMPDIR: root, LAND_LOCK_POLL: "0.1" };
-  const lock = (cwd: string, op: string, extra = {}) =>
-    Bun.spawnSync(["sh", LOCK, op], { cwd, env: { ...env, ...extra }, timeout: 1000 }).exitCode;
+  const lock = (cwd: string, op: string, ...areas: string[]) =>
+    Bun.spawnSync(["sh", LOCK, op, ...areas], { cwd, env, timeout: 1000 }).exitCode;
   expect(lock(repo, "take")).toBe(0);
   expect(lock(repo, "take")).toBe(0); // the holder again
   expect(lock(join(root, "locked-b"), "drop")).toBe(1);
@@ -292,4 +299,19 @@ test("the landing lock: one holder per repo across worktrees, only the holder dr
   expect(lock(join(root, "locked-b"), "take")).toBe(0); // stale: taken over
   expect(lock(join(root, "locked-b"), "drop")).toBe(0);
   expect(lock(repo, "take")).toBe(0);
+  // Areas: different areas land in parallel; a PR spanning a held area waits; a bad name is refused.
+  const b = join(root, "locked-b");
+  expect(lock(repo, "take", "server")).toBe(0);
+  expect(lock(b, "take", "phone")).toBe(0);
+  expect(lock(b, "take", "server", "phone")).not.toBe(0); // waits on server, killed by the timeout
+  expect(lock(repo, "drop", "server")).toBe(0);
+  expect(lock(b, "take", "server", "phone")).toBe(0); // resumes past phone, already held
+  expect(lock(b, "drop", "phone", "server")).toBe(0);
+  expect(lock(b, "take", "a/b")).toBe(2);
+  // Case-folded; a drop releases what it holds even past a lock it doesn't.
+  expect(lock(repo, "take", "Server")).toBe(0);
+  expect(lock(b, "take", "phone")).toBe(0);
+  expect(lock(b, "drop", "server", "phone")).toBe(1);
+  expect(lock(repo, "take", "phone", "SERVER")).toBe(0);
+  expect(lock(repo, "drop", "phone", "server")).toBe(0);
 });

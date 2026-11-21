@@ -76,6 +76,9 @@ the last step mostly confirms.
 - **Mechanical volume from a precise plan** (migrating callers, renames, tests): junior, with file-level instructions.
 - **Small and targeted, or a chain of dependent steps:** the main session does it itself; a cold agent would reread
   what you already read.
+- **Session hygiene** (builders and orchestrators): never end a turn only to report waiting (on a check, a review or a
+  slot); end it when something lands, fails or needs a decision.
+- Long-lived builder sessions start fresh at each milestone with a one-page brief, never growing without end.
 
 ## Plan (before code)
 
@@ -133,7 +136,8 @@ before creating, clean up as you go; every changed line traces to the request or
    foundation, or open it now as its own task or PR with a complete brief; say which, per item, never as a line of
    prose. **Kept on purpose**: only with a reason the user would accept. A finding is evidence, not an order (above all
    from another CLI): check it against the code before acting; a claim about behavior needs a reachable input.
-4. **One confirming round, then stop.** A new fresh junior reviewer gets `verdict-confirm.md`, the must-fix and
+4. **One confirming round, then stop.** When every fix is mechanical (a rename, a one-line guard, a test added, a
+   doc line), list them under `Mechanical fixes:` and skip the round. Otherwise a new fresh junior reviewer gets `verdict-confirm.md`, the must-fix and
    kept-on-purpose items verbatim, and the fixes only (`git diff <sha the last round saw>..HEAD`). A full round
    again (step 2) only when a fix reshaped the change. Whatever the confirming round still
    finds goes into the verdict as debt added, a rework or kept on purpose; no third round.
@@ -143,7 +147,7 @@ before creating, clean up as you go; every changed line traces to the request or
 
    ```
    ## Debt verdict
-   Reviewed: <full sha the verdict reviewed: the PR's head, or the head before a clean merge of main>
+   Reviewed: <full sha the verdict reviewed: the PR's head (with its mechanical fixes), or the head before a clean merge of main>
    Verdict: debt reduced | no debt added | debt added | rework needed
    Plan: matched | drifted: <what, and whether the plan was updated> | none (full review)
    Net lines: +<added> / −<deleted>
@@ -152,13 +156,16 @@ before creating, clean up as you go; every changed line traces to the request or
    Debt added: <each item, or "none">
    Reworks: <each item with its task or PR link, or "none">
    Kept on purpose: <each item with its reason, or "none">
+   Mechanical fixes: <each fix that skipped the confirming round, or "none">
    ```
 
    "rework needed" cannot merge. "debt added" can, only when each item is a tracked rework or kept on purpose.
-6. **Land one PR at a time.** Take the repo's landing lock (`land-lock.sh take`, beside this skill; `drop` once merged
-   or abandoned), merge `origin/<default>` once, push. A clean merge whose new main commits touch none of the PR's
-   files keeps the verdict (the gate checks it); a junior runs the base round of `verdict-confirm.md`. Otherwise, or
-   when the base round finds main touching the PR's names, a full round again (step 2). The full check always runs on what lands.
+6. **Land one PR at a time per area.** Take the landing lock (`land-lock.sh take [area...]`, beside this skill;
+   `drop` with the same areas once merged or abandoned; the repo's `AGENTS.md` may name its areas, e.g. `phone`,
+   `server`), merge `origin/<default>` once, push. The verdict survives catching up when the merge had no conflict
+   and no hunk main brought in lies within 3 lines of the PR's own changed lines (the gate checks it); a junior then
+   runs the base round of `verdict-confirm.md` on `git diff <reviewed sha>..HEAD -- <the PR's files>`. A full round
+   (step 2) only on a real conflict (main within 3 lines counts), `Base: touches`, or a fix that reshaped the change. The full check always runs on what lands.
 7. **Report in this order:** the verdict, the reworks (as tasks or PRs ready to start), the net lines, then the
    merge: merge it yourself when the verdict passes, unless the user's or the repo's rules ask for their OK first.
 

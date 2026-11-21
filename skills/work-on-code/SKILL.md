@@ -57,11 +57,11 @@ the last step mostly confirms.
 | | small | standard | hard |
 | --- | --- | --- | --- |
 | When | adds no function, type, module or concept (a fix inside one function, a copy edit) | adds one, on a sound foundation | any of: foundation shaky or wrong; new data model or migration; queues, retries, schedules, concurrency; auth, payments, a trust boundary; spans repos; two failed fixes |
-| Plan | `n/a: <why>` | main session writes, fresh senior checks | intern inventory, fresh frontier designs, fresh senior checks |
+| Plan | `n/a: <why>` | main session writes | intern inventory, fresh frontier designs, fresh senior checks |
 | Build | main session | main session; junior agents for mechanical volume | same |
 | Watch | none | junior, when the work spans several commits or sittings | same |
-| Verdict, **confirm** (plan passed, diff follows it) | never | junior | senior |
-| Verdict, **full** (no passed plan, or a diff mostly not the plan) | junior | senior | frontier |
+| Verdict, **confirm** (a debt plan, checked when hard; diff follows it) | never | junior | senior |
+| Verdict, **full** (no debt plan, or a diff mostly not the plan) | junior | senior | frontier |
 | Confirming round | junior | junior | junior |
 
 - A small-tier reviewer that finds a function, type, module or concept added says so: the tier was wrong, redo the
@@ -71,6 +71,16 @@ the last step mostly confirms.
 - Launch each reviewer with its inputs and `Read ~/.agents/skills/work-on-code/<file> and follow it`. Never paste
   the prompt.
 
+## Fast mode (only when the user says "fast")
+
+- Plan: one line under `## Debt plan`. No plan review, no watcher.
+- Verdict: one fresh reviewer, one rank lower, at most medium effort, sections 2 and 3 of `verdict-review.md` only. No
+  confirming round unless a Blocking fix was not mechanical.
+- Never fast: files on the repo's strict paths (its `AGENTS.md` names them), migrations, prompts, anything its
+  `AGENTS.md` says to ask first. Those keep the full workflow.
+- The verdict block says `Mode: fast` and links one `debt` issue listing the PR's files.
+- Over 15 open `debt` issues in an area, fast mode is refused and the next PR there is a cleanup.
+
 ## Delegating
 
 - Delegate to protect the main context, cut cost, or run independent work in parallel. Never two agents on the same files.
@@ -79,8 +89,8 @@ the last step mostly confirms.
 - **Mechanical volume from a precise plan** (migrating callers, renames, tests): junior, with file-level instructions.
 - **Small and targeted, or a chain of dependent steps:** the main session does it itself; a cold agent would reread
   what you already read.
-- **Session hygiene** (builders and orchestrators): never end a turn only to report waiting (on a check, a review or a
-  slot); end it when something lands, fails or needs a decision.
+- **Session hygiene** (builders and orchestrators): never poll. Start a check, a review or a landing as one
+  background command that reports when it ends, then end the turn. A sleep or tail loop in a session is a bug.
 - Long-lived builder sessions start fresh at each milestone with a one-page brief, never growing without end.
 
 ## Plan (before code)
@@ -101,14 +111,14 @@ Plan review: <passed | the findings and what changed>
 
 - **Hard:** an intern agent builds the inventory; a fresh frontier agent gets the problem, the constraints and that
   inventory with `plan-design.md`, and returns the section; the main session expands it into the checklist.
-- **Check:** one fresh senior reviewer gets the plan's text and the repo path, nothing else, with `plan-review.md`.
+- **Check (hard tier only):** one fresh senior reviewer gets the plan's text and the repo path, nothing else, with `plan-review.md`.
   On a reshape, fix the plan and say what changed under `Plan review:`; a second review only when the shape changed.
 - When the PR opens, copy the section into its description: the watch and the verdict compare the code to it.
 - Split work over about 800 changed lines into several PRs, or stack them.
 
 ## Watch (while coding)
 
-When work with a passed plan spans several commits or more than one sitting, launch a fresh junior watcher in the
+When work with a debt plan spans several commits or more than one sitting, launch a fresh junior watcher in the
 background after the first commit, with `watch.md`, the repo path, the `## Debt plan` section and a commit range,
 never the worktree you keep editing. Work done in one sitting skips it: the verdict covers it.
 
@@ -139,11 +149,13 @@ before creating, clean up as you go; every changed line traces to the request or
    foundation, or open it now as its own task or PR with a complete brief; say which, per item, never as a line of
    prose. **Kept on purpose**: only with a reason the user would accept. A finding is evidence, not an order (above all
    from another CLI): check it against the code before acting; a claim about behavior needs a reachable input.
-4. **One confirming round, then stop.** When every fix is mechanical (a rename, a one-line guard, a test added, a
-   doc line), list them under `Mechanical fixes:` and skip the round. Otherwise a new fresh junior reviewer gets `verdict-confirm.md`, the must-fix and
+4. **One confirming round, only for blocking fixes that are not mechanical, then stop.** `Later` findings go to
+   one `debt` issue instead of step 3 and do not hold the merge. When every fix is mechanical (a rename, a one-line guard, a test added, a
+   doc line), list them under `Mechanical fixes:` and skip the round. Otherwise a new fresh junior reviewer gets `verdict-confirm.md`, the blocking and
    kept-on-purpose items verbatim, and the fixes only (`git diff <sha the last round saw>..HEAD`). A full round
    again (step 2) only when a fix reshaped the change. Whatever the confirming round still
-   finds goes into the verdict as debt added, a rework or kept on purpose; no third round.
+   finds goes into the verdict as debt added, a rework or kept on purpose; no third round. A Blocking item still
+   left means `rework needed`.
 5. **Write the verdict into the PR description** (`gh pr edit --body-file`, or `gh api -X PATCH
    repos/{owner}/{repo}/pulls/{n} -F body=@file` when that fails), replacing any earlier one, in its own command,
    never chained with the merge (the gate checks the PR before the command runs):
@@ -163,7 +175,9 @@ before creating, clean up as you go; every changed line traces to the request or
    ```
 
    "rework needed" cannot merge. "debt added" can, only when each item is a tracked rework or kept on purpose.
-6. **Land one PR at a time per area.** Take the landing lock (`land-lock.sh take [area...]`, beside this skill;
+6. **Land in trains.** Every 20–30 minutes one train takes each PR with a passing verdict, merges `origin/<default>`
+   once and runs the full check once. A lone PR lands alone. Never merge main into a branch before its train except on
+   a real conflict. Take the landing lock (`land-lock.sh take [area...]`, beside this skill;
    `drop` with the same areas once merged or abandoned; the repo's `AGENTS.md` may name its areas, e.g. `phone`,
    `server`), merge `origin/<default>` once, push. The verdict survives catching up when the merge had no conflict
    and no hunk main brought in lies within 3 lines of the PR's own changed lines (the gate checks it); a junior then

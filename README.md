@@ -1,7 +1,7 @@
 # work-on-code
 
 One agent skill for working on code under one rule: **every change leaves less technical debt than before.** Debt is
-decided while planning, so the rule runs before code (a debt plan, checked by a fresh reviewer), beside it (a
+decided while planning, so the rule runs before code (a debt plan, checked by a fresh reviewer on hard work), beside it (a
 background watcher) and before merge (a fresh reviewer's debt verdict, written into the PR). A tier (small,
 standard, hard) picks the model for each step, so the most capable model is spent only where the shape is decided.
 

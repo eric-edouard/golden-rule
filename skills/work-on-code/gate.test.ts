@@ -276,6 +276,9 @@ test("a verdict carries across a clean merge of the base whose hunks stay more t
   c("git checkout -q main && sed -i.bak 4s/4/four/ a.ts && rm a.ts.bak && COMMIT -am near");
   c("git checkout -q pr && git merge -q --no-edit main");
   expect(carries(repo, reviewed, head(), "main")).toBe(false);
+  // a mode change on the PR's file counts as the whole file, even beside a far edit: stale
+  c(`git checkout -q -b base2 ${reviewed}~1 && chmod +x a.ts && sed -i.bak 5s/5/five/ a.ts && rm a.ts.bak && COMMIT -am mode && git checkout -q -b pr2 ${reviewed} && git merge -q --no-edit base2`);
+  expect(carries(repo, reviewed, head(), "base2")).toBe(false);
   // unknown commits are a no
   expect(carries(repo, "0".repeat(40), head(), "main")).toBe(false);
 });
@@ -305,4 +308,10 @@ test("the landing lock: one holder per repo across worktrees, only the holder dr
   expect(lock(b, "take", "server", "phone")).toBe(0); // resumes past phone, already held
   expect(lock(b, "drop", "phone", "server")).toBe(0);
   expect(lock(b, "take", "a/b")).toBe(2);
+  // Case-folded; a drop releases what it holds even past a lock it doesn't.
+  expect(lock(repo, "take", "Server")).toBe(0);
+  expect(lock(b, "take", "phone")).toBe(0);
+  expect(lock(b, "drop", "server", "phone")).toBe(1);
+  expect(lock(repo, "take", "phone", "SERVER")).toBe(0);
+  expect(lock(repo, "drop", "phone", "server")).toBe(0);
 });

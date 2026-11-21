@@ -209,7 +209,7 @@ export function checkPrePush(dir: string, remote: string, lines: string) {
 /** How close (in lines) the base's change may come to the PR's own lines and still carry the verdict. */
 const NEAR = 3;
 
-/** Each changed file of a `-U0 --no-renames` diff (keyed by its `diff --git` line) as merge-base line spans; a file with no hunk (binary, mode) spans everything. */
+/** Each changed file of a `-U0 --no-renames` diff (keyed by its `diff --git` line) as merge-base line spans; a mode change or a file with no hunk (binary) spans everything. */
 function spansOf(diff: string) {
   const files = new Map<string, number[][]>();
   let spans: number[][] = [];
@@ -217,6 +217,9 @@ function spansOf(diff: string) {
     if (line.startsWith("diff --git ")) {
       spans = [];
       files.set(line, spans);
+    }
+    if (/^(old|new|new file|deleted file) mode /.test(line)) {
+      spans.push([0, Number.POSITIVE_INFINITY]);
     }
     const hunk = /^@@ -(\d+)(?:,(\d+))?/.exec(line);
     if (hunk) {
@@ -238,7 +241,7 @@ function spansOf(diff: string) {
  * diffs count lines in the merge base). Read from local git; anything it cannot read is a no.
  */
 export function carries(dir: string, reviewed: string, head: string, base: string) {
-  const diff = (range: string) => run(dir, ["git", "diff", "-U0", "--no-renames", "--no-color", "--no-ext-diff", range]);
+  const diff = (range: string) => run(dir, ["git", "diff", "-U0", "--inter-hunk-context=0", "--no-renames", "--no-color", "--no-ext-diff", "--no-textconv", range]);
   const merged = run(dir, ["git", "merge-tree", "--write-tree", reviewed, base]);
   const tree = run(dir, ["git", "rev-parse", `${head}^{tree}`]);
   const ours = diff(`${base}...${reviewed}`);

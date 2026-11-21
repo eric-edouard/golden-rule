@@ -3,7 +3,8 @@
 #   land-lock.sh take [area...]   wait for each area's lock (none: the whole repo's), in sorted order, then hold them for this branch
 #   land-lock.sh drop [area...]   release them (only the branch holding a lock can)
 # A lock older than LAND_LOCK_STALE minutes (default 90) was abandoned and is taken over. The lock only saves wasted
-# catch-ups: the gate's behind-base check, not this lock, keeps a landing correct.
+# catch-ups: the gate's behind-base check keeps a landing correct, except that PRs of different areas may merge without
+# testing each other (the trade areas make). Areas are case-folded (Phone is phone).
 # ponytail: the whole repo's lock and an area's don't exclude each other; a repo that names areas always passes one.
 set -eu
 common=$(git rev-parse --path-format=absolute --git-common-dir)
@@ -30,13 +31,15 @@ take() {
 }
 drop() {
   [ -d "$lock" ] || return 0
-  [ "$(holder)" = "$me" ] || { echo "land-lock: held by $(holder), not $me" >&2; exit 1; }
+  [ "$(holder)" = "$me" ] || { echo "land-lock: held by $(holder), not $me" >&2; failed=1; return 0; }
   rm -rf "$lock"
 }
+failed=0
 case "$op" in take | drop) ;; *) echo "usage: land-lock.sh take|drop [area...]" >&2; exit 2 ;; esac
 # Sorted, so two branches spanning the same areas never wait on each other in a cycle; no area is the whole repo.
-for area in $(printf '%s\n' "$@" | sort -u); do
+for area in $(printf '%s\n' "$@" | tr 'A-Z' 'a-z' | LC_ALL=C sort -u); do
   lock="$repo-$area"
   "$op"
 done
 [ $# -gt 0 ] || { area="" lock="$repo"; "$op"; }
+exit "$failed"

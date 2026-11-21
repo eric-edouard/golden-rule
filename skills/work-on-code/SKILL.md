@@ -165,7 +165,7 @@ before creating, clean up as you go; every changed line traces to the request or
    `server`), merge `origin/<default>` once, push. The verdict survives catching up when the merge had no conflict
    and no hunk main brought in lies within 3 lines of the PR's own changed lines (the gate checks it); a junior then
    runs the base round of `verdict-confirm.md` on `git diff <reviewed sha>..HEAD -- <the PR's files>`. A full round
-   (step 2) only on a real conflict (main within 3 lines counts) or when a fix reshaped the change. The full check always runs on what lands.
+   (step 2) only on a real conflict (main within 3 lines counts), `Base: touches`, or a fix that reshaped the change. The full check always runs on what lands.
 7. **Report in this order:** the verdict, the reworks (as tasks or PRs ready to start), the net lines, then the
    merge: merge it yourself when the verdict passes, unless the user's or the repo's rules ask for their OK first.
 

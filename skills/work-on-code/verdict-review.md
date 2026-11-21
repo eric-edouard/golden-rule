@@ -20,6 +20,10 @@ concept.
 
 **4. Deletion:** dead code, unused exports or options, speculative flexibility, comments that restate code.
 
+**Blocking** means only: data loss, a wrong or duplicate send, a lost or starved event, a privacy or security leak, a
+broken AGENTS.md invariant, wrong stored data. Mark every finding `Blocking` or `Later`. `Verdict: rework needed`
+only when a Blocking item exists.
+
 Report, ranked: what, where (file:line), the change, net lines. Name each problem's class and list every instance of
 it in the diff, so one round fixes them all. Separate **Do it** (clear wins, and any rule the
 repo's AGENTS.md sets that the change breaks), **Rework** (architecture changes, each with a short plan and size)

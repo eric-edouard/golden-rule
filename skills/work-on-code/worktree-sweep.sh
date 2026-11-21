@@ -1,7 +1,7 @@
 #!/bin/bash
 # worktree-sweep.sh [repo...]: remove every git worktree whose branch's PR is merged or closed, then its local branch.
-# Only when the branch tip is exactly the PR's head (no local commits after it), no tracked file is changed, and no
-# process works in the tree. Untracked and ignored files in it (node_modules, builds) go with it. No repo given: every
+# Only when the branch tip is exactly the PR's head (no local commits after it), nothing uncommitted (new files included) is in it, and no
+# process works in the tree. Ignored files in it (node_modules, builds) go with it. No repo given: every
 # repo directly under ~/Work. Run it from outside the trees it should remove. Safe to run any time.
 unset GITHUB_TOKEN GH_TOKEN
 repos=("$@"); [ ${#repos[@]} -gt 0 ] || repos=(~/Work/*/)
@@ -23,7 +23,7 @@ for r in "${repos[@]}"; do
     [ -n "$st" ] || continue
     in_use "$(cd "$w" 2>/dev/null && pwd -P)" && continue
     in_use "$w" && continue
-    out=$(git -C "$w" status --porcelain --untracked-files=no 2>/dev/null) || continue
+    out=$(git -C "$w" status --porcelain --untracked-files=normal 2>/dev/null) || continue
     [ -z "$out" ] || continue
     git worktree remove --force "$w" && git branch -D -q "$b" && echo "removed $w ($b, $st)"
   done

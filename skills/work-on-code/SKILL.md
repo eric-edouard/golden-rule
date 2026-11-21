@@ -186,6 +186,8 @@ before creating, clean up as you go; every changed line traces to the request or
    (step 2) only on a real conflict (main within 3 lines counts), `Base: touches`, or a fix that reshaped the change. The full check always runs on what lands.
 7. **Report in this order:** the verdict, the reworks (as tasks or PRs ready to start), the net lines, then the
    merge: merge it yourself when the verdict passes, unless the user's or the repo's rules ask for their OK first.
+8. **After the merge, remove the worktree and its local branch** (`worktree-sweep.sh <repo>`, beside this skill, does it
+   for every merged or closed PR; a daily job runs it over `~/Work`).
 
 ## Rules
 

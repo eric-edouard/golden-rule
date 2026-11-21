@@ -46,8 +46,9 @@ the last step mostly confirms.
   read-only for a reviewer or an intern, writable for a build. When the CLI is missing (`command -v`) or the run fails
   before it starts work (login, quota), use the mapping for that rank and say so; a writable run that fails later is
   reported for inspection, never silently rerun.
-- Before the first delegation, when a pick names another CLI found on the machine (`command -v`), ask once whether
-  to use it this session; on no, ignore the picks. No one to ask (loop, headless, cloud): apply the picks.
+- Before the first delegation, when a pick names another CLI found on the machine (`command -v`), the main session
+  asks once whether to use it, and the answer holds for the session; on no, ignore the picks. No one to ask (loop,
+  headless, cloud, a delegate): apply the picks.
 - Everything below names ranks, never models. A higher rank than it names, or a higher effort, only when the user
   asks.
 

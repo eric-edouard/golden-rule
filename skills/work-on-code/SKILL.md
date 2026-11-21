@@ -46,7 +46,7 @@ the last step mostly confirms.
   read-only for a reviewer or an intern, writable for a build. When the CLI is missing (`command -v`) or the run fails
   before it starts work (login, quota), use the mapping for that rank and say so; a writable run that fails later is
   reported for inspection, never silently rerun.
-- Before the first delegation the main session asks two questions at once, and both answers hold for the session:
+- Before the plan or the first delegation, whichever comes first, the main session asks two questions at once, and both answers hold for the session:
   use the picks' other CLI (only when a pick names one found on the machine, `command -v`; on no, ignore the picks),
   and use fast mode (below). A delegate keeps the session's answers from its brief; no one to ask (loop, headless,
   cloud): apply the picks, no fast mode.

@@ -77,9 +77,10 @@ function post(prefix: string, t: Target) {
       "-f", `state=${state}`, "-f", `context=${prefix}/${context}`,
       "-f", `description=${why.length > 140 ? `${why.slice(0, 139)}…` : why}`, "-f", `target_url=${pr.url}`,
     ]);
-  // This checkout is the PR's repo, as for `gh pr merge` run here; the reason without its how-to.
+  // This checkout is the PR's repo, as for `gh pr merge` run here; a refusal without its how-to.
   const verdict = verdictOf(top, pr, true);
-  status("debt-verdict", verdict.state, verdict.why.replace(pr.url, "this PR").split(/(?<=\.) /)[0] as string);
+  const why = verdict.why.replace(pr.url, "this PR");
+  status("debt-verdict", verdict.state, verdict.state === "success" ? why : (why.split(/(?<=\.) /)[0] as string));
   // The check speaks for the head only from its clean checkout, the tree the pre-push hook saw pass.
   const pkg = join(top, "package.json");
   const clean = head === pr.headRefOid && run(top, ["git", "status", "--porcelain", "--untracked-files=normal"]) === "";

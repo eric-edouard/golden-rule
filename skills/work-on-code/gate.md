@@ -55,7 +55,9 @@ tool hook (it happens on GitHub, where no git hook runs).
 Where the merge cannot be blocked on GitHub (no branch protection, no CI), `pr-status.ts <prefix>` shows the gate on
 the PR as commit statuses. It is a Claude Code `PostToolUse` hook (matcher `Bash`), registered by a repo that wants it
 (`bun pr-status.ts mad`). After a command that pushed (`git push`) or edited a PR (`gh pr create|edit|ready`, the
-`gh api -X PATCH …/pulls/<n>` fallback) of the folder's own repo, it posts on the PR's head:
+`gh api -X PATCH …/pulls/<n>` fallback) of the folder's own repo, it posts on the PR's head. A PR named by number
+or URL is shown when it belongs to the folder's repo (another repo's is skipped); the branch's PR only when the
+checkout's HEAD is its head. Tag-only, deleting and dry-run pushes are ignored.
 
 - `<prefix>/debt-verdict`: the gate's rule on the verdict at that moment (`verdictOf`, the same code `gh pr merge` is
   checked with): success with the verdict and net lines; pending without a verdict for the head, or behind the base;

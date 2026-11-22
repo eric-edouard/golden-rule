@@ -61,9 +61,9 @@ the last step mostly confirms.
   set up, then asks its questions at once, in its harness's question tool (Claude: `AskUserQuestion`), one question
   each, and the answers hold for the session: normal or fast mode (below); the picks' other CLI or not; and each
   optional pick or not, by its name. Set up: `command -v` finds it, and for `codex`, `codex login status` says logged
-  in; for `pi`, its key command prints a key and `pi --list-models <model id>` lists the model. A CLI not set up gets
-  no question and its picks are ignored; say so in one line. The user naming an optional pick later ("deepseek") turns it on.
-  A delegate keeps the session's answers from its brief; no one to ask (loop, headless, cloud): apply the picks, no
+  in; for `pi`, `[ -n "$(<key command>)" ]` (never print the key) and `pi --list-models <model id>` lists that exact
+  id. A CLI not set up gets no question and its picks are ignored; say so in one line. The user naming an optional
+  pick later ("deepseek") turns it on. A delegate keeps the session's answers from its brief; no one to ask (loop, headless, cloud): apply the picks, no
   fast mode, no optional pick.
 - Everything below names ranks, never models. A higher rank than a step names, or a higher effort, only when the user
   asks. Launch every delegate with its rank's model: a Claude subagent without `model:` inherits the session's,

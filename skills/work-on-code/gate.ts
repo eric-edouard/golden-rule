@@ -7,7 +7,7 @@
 import { resolve } from "node:path";
 
 /** A command's output, or null when it fails or cannot start (e.g. a folder an earlier part of the command creates). */
-const run = (cwd: string, cmd: string[]) => {
+export const run = (cwd: string, cmd: string[]) => {
   try {
     const p = Bun.spawnSync(cmd, { cwd, stderr: "pipe", stdout: "pipe" });
     return p.exitCode === 0 ? p.stdout.toString().trim() : null;
@@ -120,7 +120,7 @@ function program(all: string[]) {
 }
 
 /** The default branch of the repo at `dir` (the remote's HEAD), or main and master when it cannot be read. */
-function defaults(dir: string, remote = "origin") {
+export function defaults(dir: string, remote = "origin") {
   const head = run(dir, ["git", "symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`]);
   return head ? [head.replace(/^[^/]+\//, "")] : ["main", "master"];
 }
@@ -270,6 +270,54 @@ const VALUED = new Set([
   "--match-head-commit",
 ]);
 
+/** A PR as `gh pr view --json PR_FIELDS` gives it. */
+export type Pr = { baseRefName: string; body: string | null; files: { path: string }[]; headRefOid: string; url: string };
+export const PR_FIELDS = "baseRefName,body,files,headRefOid,url";
+
+/**
+ * The merge gate's rule on a PR's debt verdict, for the gate and the PR's status alike: `success` (it may merge),
+ * `pending` (no verdict for its head yet, or its base moved) or `failure` ("rework needed"), with why.
+ * `local`: `dir` is the PR's checkout, so its git can be read.
+ */
+export function verdictOf(dir: string, pr: Pr, local: boolean): { state: "success" | "pending" | "failure"; why: string } {
+  const all = local && dataRepo(dir, `origin/${pr.baseRefName}`);
+  if (pr.files.length > 0 && pr.files.every((f) => isData(f.path, all))) {
+    return { state: "success", why: "docs and data only" }; // nothing functional to review
+  }
+  const section = (pr.body ?? "").split(/^## Debt verdict\s*$/m)[1] ?? "";
+  const reviewed = section.match(/^Reviewed:\s*`?([0-9a-f]{7,40})/m)?.[1];
+  const verdict = section.match(/^Verdict:\s*(.+)$/m)?.[1]?.trim();
+  if (!(reviewed && verdict)) {
+    return {
+      state: "pending",
+      why: `${pr.url} has no debt verdict. Run work-on-code: a fresh reviewer, its findings applied, and its verdict written into the PR as "## Debt verdict" with "Reviewed: <head sha>".`,
+    };
+  }
+  if (/rework needed/i.test(verdict)) {
+    return { state: "failure", why: `${pr.url}'s debt verdict says "rework needed". Do the rework (here or as its own PR) and review again.` };
+  }
+  // The base as GitHub has it, never a local ref, which may name another remote's commits or be forged.
+  const repoPath = pr.url.replace(/^https:\/\/github\.com\//, "").replace(/\/pull\/\d+$/, "");
+  const [behind, baseSha] = (run(dir, [
+    "gh", "api", `repos/${repoPath}/compare/${pr.baseRefName}...${pr.headRefOid}`, "-q", "[.behind_by, .base_commit.sha] | @tsv",
+  ]) ?? "").split("\t");
+  if (!(pr.headRefOid.startsWith(reviewed) || (local && baseSha && carries(dir, reviewed, pr.headRefOid, baseSha)))) {
+    return {
+      state: "pending",
+      why: `${pr.url}'s debt verdict is for ${reviewed.slice(0, 12)}, but the PR's head is now ${pr.headRefOid.slice(0, 12)} and is not a clean merge of ${pr.baseRefName} into it whose changes stay more than ${NEAR} lines from the PR's own (checked from the PR's checkout). Review the new commits (work-on-code) and update the verdict.`,
+    };
+  }
+  // The base moved since the merge: the result was never checked or reviewed.
+  if (!behind || Number(behind) > 0) {
+    return {
+      state: "pending",
+      why: `${pr.url} is ${behind || "maybe"} commit(s) behind ${pr.baseRefName}: take the landing lock, merge origin/${pr.baseRefName} into the branch, push (the check runs), confirm or redo the verdict (work-on-code), then merge.`,
+    };
+  }
+  const net = section.match(/^Net lines:\s*(.+)$/m)?.[1]?.trim();
+  return { state: "success", why: net ? `${verdict} · ${net}` : verdict };
+}
+
 function checkMerge(dir: string, args: string[], repoFlag: string[]) {
   const positional: string[] = [];
   const values = new Map<string, string>();
@@ -288,56 +336,14 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
     deny(`more than one PR named (${positional.join(", ")}); merge one PR at a time.`);
   }
   const repo = values.get("-R") ?? values.get("--repo");
-  const json = run(dir, [
-    "gh",
-    "pr",
-    "view",
-    ...positional,
-    ...(repo ? ["-R", repo] : repoFlag),
-    "--json",
-    "baseRefName,body,files,headRefOid,url",
-  ]);
+  const json = run(dir, ["gh", "pr", "view", ...positional, ...(repo ? ["-R", repo] : repoFlag), "--json", PR_FIELDS]);
   if (!json) {
     deny("could not read the PR to check its debt verdict (gh pr view failed: offline, not signed in, or no PR).");
   }
-  const pr = JSON.parse(json) as {
-    baseRefName: string;
-    body: string | null;
-    files: { path: string }[];
-    headRefOid: string;
-    url: string;
-  };
-  const local = !repo && repoFlag.length === 0; // the PR's repo is this checkout, so its git can be read
-  const all = local && dataRepo(dir, `origin/${pr.baseRefName}`);
-  if (pr.files.length > 0 && pr.files.every((f) => isData(f.path, all))) {
-    return; // documentation, memory or data only: nothing functional to review
-  }
-  const section = (pr.body ?? "").split(/^## Debt verdict\s*$/m)[1] ?? "";
-  const reviewed = section.match(/^Reviewed:\s*`?([0-9a-f]{7,40})/m)?.[1];
-  const verdict = section.match(/^Verdict:\s*(.+)$/m)?.[1]?.trim();
-  if (!(reviewed && verdict)) {
-    deny(
-      `${pr.url} has no debt verdict. Run work-on-code: a fresh reviewer, its findings applied, and its verdict written into the PR as "## Debt verdict" with "Reviewed: <head sha>".`
-    );
-  }
-  if (/rework needed/i.test(verdict)) {
-    deny(`${pr.url}'s debt verdict says "rework needed". Do the rework (here or as its own PR) and review again.`);
-  }
-  // The base as GitHub has it, never a local ref, which may name another remote's commits or be forged.
-  const repoPath = pr.url.replace(/^https:\/\/github\.com\//, "").replace(/\/pull\/\d+$/, "");
-  const [behind, baseSha] = (run(dir, [
-    "gh", "api", `repos/${repoPath}/compare/${pr.baseRefName}...${pr.headRefOid}`, "-q", "[.behind_by, .base_commit.sha] | @tsv",
-  ]) ?? "").split("\t");
-  if (!(pr.headRefOid.startsWith(reviewed) || (local && baseSha && carries(dir, reviewed, pr.headRefOid, baseSha)))) {
-    deny(
-      `${pr.url}'s debt verdict is for ${reviewed.slice(0, 12)}, but the PR's head is now ${pr.headRefOid.slice(0, 12)} and is not a clean merge of ${pr.baseRefName} into it whose changes stay more than ${NEAR} lines from the PR's own (checked from the PR's checkout). Review the new commits (work-on-code) and update the verdict.`
-    );
-  }
-  // The base moved since the merge: the result was never checked or reviewed.
-  if (!behind || Number(behind) > 0) {
-    deny(
-      `${pr.url} is ${behind || "maybe"} commit(s) behind ${pr.baseRefName}: take the landing lock, merge origin/${pr.baseRefName} into the branch, push (the check runs), confirm or redo the verdict (work-on-code), then merge.`
-    );
+  const pr = JSON.parse(json) as Pr;
+  const { state, why } = verdictOf(dir, pr, !repo && repoFlag.length === 0);
+  if (state !== "success") {
+    deny(why);
   }
   const pinned = values.get("--match-head-commit");
   if (args.includes("--auto") && !(pinned && pr.headRefOid.startsWith(pinned))) {
@@ -390,36 +396,53 @@ function checkCodexExec(launched: string[], stdin: boolean) {
   }
 }
 
-/** One simple command at a time, following `cd`; `sh -c "<script>"` is checked as its own script. */
-function check(script: string, from: string, split = commands(script)) {
+/**
+ * Each simple command of a script: its program's words, the folder it runs in (following `cd`) and whether its stdin is
+ * not the caller's; `sh -c "<script>"` is walked as its own script.
+ */
+export function* walk(script: string, from: string, split = commands(script)): Generator<{ w: string[]; cwd: string; stdin: boolean }> {
   let cwd = from;
   for (const raw of split) {
     const w = program(raw);
     const [cmd, ...args] = w;
-    // The program `timeout <duration>` runs (options before the duration are not read), else the command's own.
-    checkCodexExec(cmd === "timeout" ? w.slice(2) : w, raw.stdin === true);
+    const c = SHELL.test(cmd ?? "") ? args.findIndex((a) => /^-\w*c$/.test(a)) : -1;
     if (cmd === "cd" && args[0]) {
       cwd = resolve(cwd, args[0].replace(/^~(?=$|\/)/, process.env.HOME ?? "~"));
-    } else if (SHELL.test(cmd ?? "")) {
-      const c = args.findIndex((a) => /^-\w*c$/.test(a));
-      if (c >= 0) {
-        check(args[c + 1] ?? "", cwd);
+    } else if (c >= 0) {
+      yield* walk(args[c + 1] ?? "", cwd);
+    } else {
+      yield { w, cwd, stdin: raw.stdin === true };
+    }
+  }
+}
+
+/** A `git [options] <subcommand> ...` command's folder (after `-C`) and its words from the subcommand on; null for another program. */
+export function gitCall(w: string[], cwd: string) {
+  if (w[0] !== "git") {
+    return null;
+  }
+  let i = 1;
+  let dir = cwd;
+  while (w[i]?.startsWith("-")) {
+    if (["-C", "-c", "--git-dir", "--work-tree"].includes(w[i] as string) && w[i + 1]) {
+      if (w[i] === "-C") {
+        dir = resolve(cwd, w[i + 1] as string);
       }
-    } else if (cmd === "git") {
-      let i = 0;
-      let dir = cwd;
-      while (args[i]?.startsWith("-")) {
-        if (["-C", "-c", "--git-dir", "--work-tree"].includes(args[i] as string) && args[i + 1]) {
-          if (args[i] === "-C") {
-            dir = resolve(cwd, args[i + 1] as string);
-          }
-          i += 1;
-        }
-        i += 1;
-      }
-      if (args[i] === "push") {
-        checkPush(dir, args.slice(i + 1));
-      }
+      i += 1;
+    }
+    i += 1;
+  }
+  return { dir, args: w.slice(i) };
+}
+
+function check(script: string, from: string, split = commands(script)) {
+  for (const { w, cwd, stdin } of walk(script, from, split)) {
+    const [cmd, ...args] = w;
+    // The program `timeout <duration>` runs (options before the duration are not read), else the command's own.
+    checkCodexExec(cmd === "timeout" ? w.slice(2) : w, stdin);
+    const git = gitCall(w, cwd);
+    if (git?.args[0] === "push") {
+      checkPush(git.dir, git.args.slice(1));
     } else if (cmd === "gh") {
       const p = args.indexOf("pr");
       const before = args.slice(0, Math.max(p, 0));

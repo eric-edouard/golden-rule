@@ -3,6 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { carries, commands, isData } from "./gate";
+import { touched } from "./pr-status";
 
 // The gate on throwaway repos: an origin whose default branch is main, a clone on main and one on a feature branch.
 // Run: bun test ~/.agents/skills/work-on-code/gate.test.ts
@@ -314,4 +315,15 @@ test("the landing lock: one holder per repo across worktrees, only the holder dr
   expect(lock(b, "drop", "server", "phone")).toBe(1);
   expect(lock(repo, "take", "phone", "SERVER")).toBe(0);
   expect(lock(repo, "drop", "phone", "server")).toBe(0);
+});
+
+test("the PR status hook fires on a push or a PR edit of this repo, and on nothing else", () => {
+  expect(touched("cd sub && git push -u origin x", "/r")).toEqual({ dir: "/r/sub", pr: [] });
+  expect(touched("git -C /a push", "/r")).toEqual({ dir: "/a", pr: [] });
+  expect(touched("gh pr edit 12 --body-file b.md", "/r")).toEqual({ dir: "/r", pr: ["12"] });
+  expect(touched('bash -c "gh pr create -t x -b y"', "/r")).toEqual({ dir: "/r", pr: [] });
+  expect(touched("gh api -X PATCH repos/o/r/pulls/7 -F body=@b.md", "/r")).toEqual({ dir: "/r", pr: ["7"] });
+  for (const cmd of ["git push --dry-run", "gh pr edit 3 -R o/other", "gh pr view", "echo git push", "gh api repos/o/r/pulls/7"]) {
+    expect([cmd, touched(cmd, "/r")]).toEqual([cmd, null]);
+  }
 });

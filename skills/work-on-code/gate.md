@@ -49,3 +49,19 @@ cannot check, it refuses. It stops the ordinary ways of merging, not a determine
 the user can always merge themselves. The pre-push hook gates the user's own pushes of code to the default branch
 too, and any harness's; `git push --no-verify` or `-c core.hooksPath=` skips it, and a merge is checked only by the
 tool hook (it happens on GitHub, where no git hook runs).
+
+## The gate on the PR (`pr-status.ts`)
+
+Where the merge cannot be blocked on GitHub (no branch protection, no CI), `pr-status.ts <prefix>` shows the gate on
+the PR as commit statuses. It is a Claude Code `PostToolUse` hook (matcher `Bash`), registered by a repo that wants it
+(`bun pr-status.ts mad`). After a command that pushed (`git push`) or edited a PR (`gh pr create|edit|ready`, the
+`gh api -X PATCH …/pulls/<n>` fallback) of the folder's own repo, it posts on the PR's head:
+
+- `<prefix>/debt-verdict`: the gate's rule on the verdict at that moment (`verdictOf`, the same code `gh pr merge` is
+  checked with): success with the verdict and net lines; pending without a verdict for the head, or behind the base;
+  failure on "rework needed". The base can move later: the status is as of the last push or edit.
+- `<prefix>/check`, in repos with a `check` script, only from the PR's clean, pushed head: success when
+  `<git dir>/check-passed` (the tree the repo's pre-push hook last saw `bun run check` pass on, clean before and
+  after) is the head's tree, pending otherwise.
+
+It never refuses anything and is silent on errors and branches with no open PR.

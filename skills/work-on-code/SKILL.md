@@ -50,7 +50,8 @@ the last step mostly confirms.
   use the picks' other CLI (only when a pick names one found on the machine, `command -v`; on no, ignore the picks),
   and use fast mode (below). A delegate keeps the session's answers from its brief; no one to ask (loop, headless,
   cloud): apply the picks, no fast mode.
-- Everything below names ranks, never models. A higher rank than it names, or a higher effort, only when the user
+- Everything below names ranks, never models. Launch every delegate with its rank's model: a Claude subagent without
+  `model:` inherits the session's, usually frontier. A higher rank than it names, or a higher effort, only when the user
   asks.
 
 ## Tier: decided once, written in the plan
@@ -85,8 +86,6 @@ the last step mostly confirms.
 ## Delegating
 
 - Delegate to protect the main context, cut cost, or run independent work in parallel. Never two agents on the same files.
-- Every delegate is launched with its rank's model (Claude: the Agent tool's `model:`); one launched without it
-  inherits the main session's, usually frontier.
 - **Needs no intelligence, and its output would fill the main context** (search, inventory, logs, docs lookup, bulk
   reads): intern; rerun on junior when the output is not good enough. Every result carries file:line evidence.
 - **Mechanical volume from a precise plan** (migrating callers, renames, tests): junior, with file-level instructions.
@@ -94,7 +93,7 @@ the last step mostly confirms.
   what you already read.
 - **Session hygiene** (builders and orchestrators): never poll. Start a check, a review or a landing as one
   background command that reports when it ends, then end the turn. A sleep or tail loop in a session is a bug.
-- **One builder, one PR.** A builder (agent or session) builds one PR, then ends; the next PR gets a fresh one with a
+- **One builder, one PR.** A builder (agent or session) builds one PR through its verdict fixes, then ends; the next PR gets a fresh one with a
   one-page brief. Every turn rereads the whole context, so its length is the cost: keep command output short (failures
   only, `tail`) and read files by range.
 

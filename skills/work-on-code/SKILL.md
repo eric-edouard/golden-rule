@@ -50,9 +50,9 @@ the last step mostly confirms.
   use the picks' other CLI (only when a pick names one found on the machine, `command -v`; on no, ignore the picks),
   and use fast mode (below). A delegate keeps the session's answers from its brief; no one to ask (loop, headless,
   cloud): apply the picks, no fast mode.
-- Everything below names ranks, never models. Launch every delegate with its rank's model: a Claude subagent without
-  `model:` inherits the session's, usually frontier. A higher rank than it names, or a higher effort, only when the user
-  asks.
+- Everything below names ranks, never models. A higher rank than a step names, or a higher effort, only when the user
+  asks. Launch every delegate with its rank's model: a Claude subagent without `model:` inherits the session's,
+  usually frontier.
 
 ## Tier: decided once, written in the plan
 
@@ -93,9 +93,9 @@ the last step mostly confirms.
   what you already read.
 - **Session hygiene** (builders and orchestrators): never poll. Start a check, a review or a landing as one
   background command that reports when it ends, then end the turn. A sleep or tail loop in a session is a bug.
-- **One builder, one PR.** A builder (agent or session) builds one PR through its verdict fixes, then ends; the next PR gets a fresh one with a
-  one-page brief. Every turn rereads the whole context, so its length is the cost: keep command output short (failures
-  only, `tail`) and read files by range.
+- **One builder, one PR.** A builder (agent or session) builds one PR through its verdict fixes, then ends; the next
+  PR gets a fresh one with a one-page brief. Every turn rereads the whole context, so its length is the cost: keep
+  command output short (failures only, `tail`) and read files by range.
 
 ## Plan (before code)
 

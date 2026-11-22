@@ -46,10 +46,23 @@ the last step mostly confirms.
   read-only for a reviewer or an intern, writable for a build. When the CLI is missing (`command -v`) or the run fails
   before it starts work (login, quota), use the mapping for that rank and say so; a writable run that fails later is
   reported for inspection, never silently rerun.
-- Before the plan or the first delegation, whichever comes first, the main session asks two questions at once, and both answers hold for the session:
-  use the picks' other CLI (only when a pick names one found on the machine, `command -v`; on no, ignore the picks),
-  and use fast mode (below). A delegate keeps the session's answers from its brief; no one to ask (loop, headless,
-  cloud): apply the picks, no fast mode.
+- **Optional picks** run ranks on one model through the `pi` CLI, only in a session that turns them on:
+  `{"optional": {"deepseek": {"cli": "pi", "model": "openrouter/~deepseek/deepseek-flash-latest", "key": "<command
+  printing the key>", "effort": "high", "ranks": ["builder", "junior", "intern"]}}}` in the same file (the one place a
+  model is named; a `~…-latest` id follows the newest release). Launch in the worktree `env -i HOME="$HOME"
+  PATH="$PATH" TERM=dumb pi -p --no-session --model <model> --api-key "$(<key>)" --thinking <effort> [--tools
+  read,grep,find,ls] "<prompt>"`: `env -i` keeps the shell's secrets from its tools, the tool list makes a reviewer or
+  an intern read-only. Pi loads the global and repo `AGENTS.md`, its skills and extensions (Ponytail: `pi install
+  git:github.com/DietrichGebert/ponytail`). `builder` takes the session's builds: the main session writes no code; each
+  build goes to a fresh writable run briefed as a builder (the plan, the files, the tests to run; build only: no plan,
+  verdict, commit or PR), then the main session reads the diff, runs the tests and commits. A failed launch falls back
+  like any pick.
+- Before the plan or the first delegation, whichever comes first, the main session asks its questions at once, in its
+  harness's question tool (Claude: `AskUserQuestion`), one question each, and the answers hold for the session: normal
+  or fast mode (below); the picks' other CLI or not (only when a pick names one found on the machine, `command -v`; on
+  no, ignore the picks); and each optional pick or not, by its name. The user naming one later ("deepseek") turns it on.
+  A delegate keeps the session's answers from its brief; no one to ask (loop, headless, cloud): apply the picks, no
+  fast mode, no optional pick.
 - Everything below names ranks, never models. A higher rank than a step names, or a higher effort, only when the user
   asks. Launch every delegate with its rank's model: a Claude subagent without `model:` inherits the session's,
   usually frontier.

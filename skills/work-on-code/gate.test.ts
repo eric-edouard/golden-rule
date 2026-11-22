@@ -317,13 +317,19 @@ test("the landing lock: one holder per repo across worktrees, only the holder dr
   expect(lock(repo, "drop", "phone", "server")).toBe(0);
 });
 
-test("the PR status hook fires on a push or a PR edit of this repo, and on nothing else", () => {
-  expect(touched("cd sub && git push -u origin x", "/r")).toEqual({ dir: "/r/sub", pr: [] });
-  expect(touched("git -C /a push", "/r")).toEqual({ dir: "/a", pr: [] });
-  expect(touched("gh pr edit 12 --body-file b.md", "/r")).toEqual({ dir: "/r", pr: ["12"] });
-  expect(touched('bash -c "gh pr create -t x -b y"', "/r")).toEqual({ dir: "/r", pr: [] });
-  expect(touched("gh api -X PATCH repos/o/r/pulls/7 -F body=@b.md", "/r")).toEqual({ dir: "/r", pr: ["7"] });
-  for (const cmd of ["git push --dry-run", "gh pr edit 3 -R o/other", "gh pr view", "echo git push", "gh api repos/o/r/pulls/7"]) {
-    expect([cmd, touched(cmd, "/r")]).toEqual([cmd, null]);
+test("the PR status hook names each PR a command pushed or edited, and nothing else", () => {
+  expect(touched("cd sub && git push -u origin x", "/r")).toEqual([{ dir: "/r/sub" }]);
+  expect(touched("git -C /a push", "/r")).toEqual([{ dir: "/a" }]);
+  expect(touched("gh pr edit 12 --body-file b.md && gh pr ready 13", "/r")).toEqual([
+    { dir: "/r", number: "12" },
+    { dir: "/r", number: "13" },
+  ]);
+  expect(touched("gh pr edit https://github.com/o/x/pull/4 -t y", "/r")).toEqual([{ dir: "/r", repo: "o/x", number: "4" }]);
+  expect(touched("gh pr edit 3 -R o/other", "/r")).toEqual([{ dir: "/r", repo: "o/other", number: "3" }]);
+  expect(touched('bash -c "gh pr create -t x -b y"', "/r")).toEqual([{ dir: "/r" }]);
+  expect(touched("gh api -X PATCH repos/o/x/pulls/7 -F body=@b.md", "/r")).toEqual([{ dir: "/r", repo: "o/x", number: "7" }]);
+  expect(touched("gh api -X PATCH repos/{owner}/{repo}/pulls/7 -F body=@b.md", "/r")).toEqual([{ dir: "/r", number: "7" }]);
+  for (const cmd of ["git push --dry-run", "git push origin --tags", "gh pr edit -R o/other", "gh pr view", "echo git push", "gh api repos/o/r/pulls/7"]) {
+    expect([cmd, touched(cmd, "/r")]).toEqual([cmd, []]);
   }
 });

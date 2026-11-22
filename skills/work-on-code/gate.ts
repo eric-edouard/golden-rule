@@ -7,7 +7,7 @@
 import { resolve } from "node:path";
 
 /** A command's output, or null when it fails or cannot start (e.g. a folder an earlier part of the command creates). */
-const run = (cwd: string, cmd: string[]) => {
+export const run = (cwd: string, cmd: string[]) => {
   try {
     const p = Bun.spawnSync(cmd, { cwd, stderr: "pipe", stdout: "pipe" });
     return p.exitCode === 0 ? p.stdout.toString().trim() : null;
@@ -273,7 +273,6 @@ const VALUED = new Set([
 /** A PR as `gh pr view --json PR_FIELDS` gives it. */
 export type Pr = { baseRefName: string; body: string | null; files: { path: string }[]; headRefOid: string; url: string };
 export const PR_FIELDS = "baseRefName,body,files,headRefOid,url";
-const DATA_ONLY = "docs and data only";
 
 /**
  * The merge gate's rule on a PR's debt verdict, for the gate and the PR's status alike: `success` (it may merge),
@@ -283,7 +282,7 @@ const DATA_ONLY = "docs and data only";
 export function verdictOf(dir: string, pr: Pr, local: boolean): { state: "success" | "pending" | "failure"; why: string } {
   const all = local && dataRepo(dir, `origin/${pr.baseRefName}`);
   if (pr.files.length > 0 && pr.files.every((f) => isData(f.path, all))) {
-    return { state: "success", why: DATA_ONLY }; // nothing functional to review
+    return { state: "success", why: "docs and data only" }; // nothing functional to review
   }
   const section = (pr.body ?? "").split(/^## Debt verdict\s*$/m)[1] ?? "";
   const reviewed = section.match(/^Reviewed:\s*`?([0-9a-f]{7,40})/m)?.[1];
@@ -345,9 +344,6 @@ function checkMerge(dir: string, args: string[], repoFlag: string[]) {
   const { state, why } = verdictOf(dir, pr, !repo && repoFlag.length === 0);
   if (state !== "success") {
     deny(why);
-  }
-  if (why === DATA_ONLY) {
-    return; // nothing functional to merge: no head to pin
   }
   const pinned = values.get("--match-head-commit");
   if (args.includes("--auto") && !(pinned && pr.headRefOid.startsWith(pinned))) {

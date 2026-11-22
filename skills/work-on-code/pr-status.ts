@@ -7,71 +7,88 @@
 //   bun pr-status.ts <prefix>   (the tool call on stdin)
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { defaults, gitCall, PR_FIELDS, type Pr, verdictOf, walk } from "./gate";
+import { defaults, gitCall, PR_FIELDS, type Pr, run, verdictOf, walk } from "./gate";
 
-const out = (cwd: string, cmd: string[]) => {
-  const p = Bun.spawnSync(cmd, { cwd, stderr: "pipe", stdout: "pipe" });
-  return p.exitCode === 0 ? p.stdout.toString().trim() : null;
-};
+/** A PR a command touched: its folder, and its repo and number when the command named them (else the branch's PR). */
+type Target = { dir: string; repo?: string; number?: string };
 
-/** The folder and PR number (when named) of the last command in `script` that pushed or edited a PR of the folder's repo. */
+const PR_URL = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/;
+
+/** The PRs a script pushed or edited, in order; a push of tags only, a deletion or a dry run is none. */
 export function touched(script: string, from: string) {
-  let hit: { dir: string; pr: string[] } | null = null;
+  const hits: Target[] = [];
   for (const { w, cwd } of walk(script, from)) {
     const git = gitCall(w, cwd);
-    if (git?.args[0] === "push" && !git.args.includes("--dry-run") && !git.args.includes("-n")) {
-      hit = { dir: git.dir, pr: [] };
-    } else if (w[0] === "gh" && w[1] === "pr" && ["create", "edit", "ready"].includes(w[2] ?? "")) {
-      // Another repo's PR (-R) is not this hook's repo: skipped.
-      if (!w.some((a) => a === "-R" || a.startsWith("--repo"))) {
-        hit = { dir: cwd, pr: w[2] !== "create" && /^\d+$/.test(w[3] ?? "") ? [w[3] as string] : [] };
+    if (git?.args[0] === "push") {
+      if (!git.args.some((a) => ["--dry-run", "-n", "--tags", "--delete", "-d"].includes(a))) {
+        hits.push({ dir: git.dir });
       }
-    } else if (w[0] === "gh" && w[1] === "api" && w.some((a) => /^PATCH$/i.test(a)) && w.some((a) => /pulls\/\d+$/.test(a))) {
-      const n = w.find((a) => /pulls\/\d+$/.test(a))?.match(/(\d+)$/)?.[1] as string;
-      hit = { dir: cwd, pr: [n] }; // the documented fallback for writing the verdict; its repo is checked below
+    } else if (w[0] === "gh" && w[1] === "pr" && ["create", "edit", "ready"].includes(w[2] ?? "")) {
+      const r = w.findIndex((a) => a === "-R" || a === "--repo");
+      const repo = r >= 0 ? w[r + 1] : w.find((a) => a.startsWith("--repo="))?.slice(7);
+      const arg = w[2] === "create" ? undefined : w[3];
+      const url = PR_URL.exec(arg ?? "");
+      if (url) {
+        hits.push({ dir: cwd, repo: url[1], number: url[2] });
+      } else if (/^\d+$/.test(arg ?? "")) {
+        hits.push({ dir: cwd, repo, number: arg });
+      } else if (!repo) {
+        hits.push({ dir: cwd }); // the branch's PR (a number after a flag is read as this too)
+      }
+    } else if (w[0] === "gh" && w[1] === "api" && w.some((a) => /^PATCH$/i.test(a))) {
+      // The documented fallback for writing the verdict: `gh api -X PATCH repos/{owner}/{repo}/pulls/<n>`.
+      const m = w.map((a) => /^\/?repos\/([^/]+\/[^/]+)\/pulls\/(\d+)$/.exec(a)).find(Boolean);
+      if (m) {
+        hits.push({ dir: cwd, repo: m[1]?.includes("{") ? undefined : m[1], number: m[2] });
+      }
     }
   }
-  return hit;
+  return hits;
 }
 
-function post(prefix: string, dir: string, prArgs: string[]) {
-  const top = out(dir, ["git", "rev-parse", "--show-toplevel"]);
+function post(prefix: string, t: Target) {
+  const top = run(t.dir, ["git", "rev-parse", "--show-toplevel"]);
   if (!top) {
     return;
   }
-  const branch = out(top, ["git", "symbolic-ref", "--short", "-q", "HEAD"]);
-  if (prArgs.length === 0 && (!branch || defaults(top).includes(branch))) {
+  const origin = run(top, ["git", "remote", "get-url", "origin"])?.replace(/\.git$/, "").toLowerCase() ?? "";
+  const ours = (repo: string) => origin.endsWith(`github.com/${repo}`.toLowerCase()) || origin.endsWith(`:${repo}`.toLowerCase());
+  if (t.repo && !ours(t.repo)) {
+    return; // another repo's PR: not this hook's to show
+  }
+  const head = run(top, ["git", "rev-parse", "HEAD"]);
+  const branch = run(top, ["git", "symbolic-ref", "--short", "-q", "HEAD"]);
+  if (!(t.number || (branch && !defaults(top).includes(branch)))) {
     return; // no PR on the default branch or a detached head: fast and silent
   }
-  const json = out(top, ["gh", "pr", "view", ...prArgs, "--json", `${PR_FIELDS},state`]);
+  const json = run(top, ["gh", "pr", "view", ...(t.number ? [t.number] : []), "--json", `${PR_FIELDS},state`]);
   if (!json) {
     return;
   }
   const pr = JSON.parse(json) as Pr & { state: string };
   const repo = pr.url.replace(/^https:\/\/github\.com\//, "").replace(/\/pull\/\d+$/, "");
-  const origin = out(top, ["git", "remote", "get-url", "origin"])?.replace(/\.git$/, "").toLowerCase() ?? "";
-  const ours = origin.endsWith(`github.com/${repo}`.toLowerCase()) || origin.endsWith(`:${repo}`.toLowerCase());
-  if (pr.state !== "OPEN" || !ours) {
+  // The branch's PR counts only when this checkout holds its pushed head (a push of another ref says nothing of it).
+  if (pr.state !== "OPEN" || !ours(repo) || (!t.number && head !== pr.headRefOid)) {
     return;
   }
-  // This checkout is the PR's pushed head, clean: its git and its check record speak for the PR.
-  const local =
-    out(top, ["git", "rev-parse", "HEAD"]) === pr.headRefOid &&
-    out(top, ["git", "status", "--porcelain", "--untracked-files=normal"]) === "";
   const status = (context: string, state: string, why: string) =>
-    out(top, [
+    run(top, [
       "gh", "api", `repos/${repo}/statuses/${pr.headRefOid}`,
       "-f", `state=${state}`, "-f", `context=${prefix}/${context}`,
       "-f", `description=${why.length > 140 ? `${why.slice(0, 139)}…` : why}`, "-f", `target_url=${pr.url}`,
     ]);
-  const verdict = verdictOf(top, pr, local);
-  status("debt-verdict", verdict.state, verdict.why.replace(`${pr.url}`, "this PR"));
+  // This checkout is the PR's repo, as for `gh pr merge` run here; the reason without its how-to.
+  const verdict = verdictOf(top, pr, true);
+  status("debt-verdict", verdict.state, verdict.why.replace(pr.url, "this PR").split(/(?<=\.) /)[0] as string);
+  // The check speaks for the head only from its clean checkout, the tree the pre-push hook saw pass.
   const pkg = join(top, "package.json");
-  if (!(local && existsSync(pkg) && JSON.parse(readFileSync(pkg, "utf8")).scripts?.check)) {
+  const clean = head === pr.headRefOid && run(top, ["git", "status", "--porcelain", "--untracked-files=normal"]) === "";
+  if (!(clean && existsSync(pkg) && JSON.parse(readFileSync(pkg, "utf8")).scripts?.check)) {
     return;
   }
-  const record = resolve(top, out(top, ["git", "rev-parse", "--git-dir"]) ?? ".git", "check-passed");
-  const passed = existsSync(record) && readFileSync(record, "utf8").trim() === out(top, ["git", "rev-parse", "HEAD^{tree}"]);
+  const record = resolve(top, run(top, ["git", "rev-parse", "--git-dir"]) ?? ".git", "check-passed");
+  const tree = run(top, ["git", "rev-parse", `${pr.headRefOid}^{tree}`]);
+  const passed = tree !== null && existsSync(record) && readFileSync(record, "utf8").trim() === tree;
   status(
     "check",
     passed ? "success" : "pending",
@@ -84,9 +101,15 @@ if (import.meta.main) {
     const input = JSON.parse((await Bun.stdin.text()) || "{}");
     const script = input.tool_input?.command;
     const prefix = process.argv[2];
-    const hit = prefix && typeof script === "string" ? touched(script, input.cwd ?? process.cwd()) : null;
-    if (hit) {
-      post(prefix as string, hit.dir, hit.pr);
+    if (prefix && typeof script === "string") {
+      const seen = new Set<string>();
+      for (const t of touched(script, input.cwd ?? process.cwd())) {
+        const key = JSON.stringify(t);
+        if (!seen.has(key)) {
+          seen.add(key);
+          post(prefix, t);
+        }
+      }
     }
   } catch {
     // A status is display only: never in the way of the command.

@@ -57,14 +57,14 @@ the last step mostly confirms.
   `builds`, the tier table's main-session builds go to pi too: the main session writes no code; each build is a fresh
   writable run (brief: the plan, the files, the tests to run; build only: no plan, verdict, commit or PR), then the
   main session reads the diff, runs the tests and commits. A failed launch falls back like any pick.
-- Before the plan or the first delegation, whichever comes first, the main session checks each CLI the picks name is
-  set up, then asks its questions at once, in its harness's question tool (Claude: `AskUserQuestion`), one question
-  each, and the answers hold for the session: normal or fast mode (below); the picks' other CLI or not; and each
+- Before the plan or the first delegation, whichever comes first, the main session checks each CLI the picks name is set
+  up, then asks its questions at once, in its harness's question tool (Claude: `AskUserQuestion`), one question each,
+  and the answers hold for the session: normal, fast or superfast mode (below); the picks' other CLI or not; and each
   optional pick or not, by its name. Set up: `command -v` finds it, and for `codex`, `codex login status` says logged
-  in; for `pi`, `[ -n "$(<key command>)" ]` (never print the key) and `pi --list-models <model id>` lists that exact
-  id. A CLI not set up gets no question and its picks are ignored; say so in one line. The user naming an optional
-  pick later ("deepseek") turns it on. A delegate keeps the session's answers from its brief; no one to ask (loop,
-  headless, cloud): apply the picks, no fast mode, no optional pick.
+  in; for `pi`, `[ -n "$(<key command>)" ]` (never print the key) and `pi --list-models <model id>` lists that exact id.
+  A CLI not set up gets no question and its picks are ignored; say so in one line. The user naming an optional pick
+  later ("deepseek") turns it on. A delegate keeps the session's answers from its brief; no one to ask (loop, headless,
+  cloud): apply the picks, normal mode, no optional pick.
 - Everything below names ranks, never models. A higher rank than a step names, or a higher effort, only when the user
   asks. Launch every delegate with its rank's model: a Claude subagent without `model:` inherits the session's,
   usually frontier.
@@ -90,13 +90,32 @@ the last step mostly confirms.
 
 ## Fast mode (on the user's yes to the first question, or when they say "fast")
 
-- Plan: one line under `## Debt plan`. No plan review, no watcher.
+- Plan: one line under `## Debt plan`, and the bundles. No plan review, no watcher.
+- **Bundles:** before building, group the planned PRs, ones already designed or filed included, into bundles that
+  share files or one area and can land together: up to about 1,500 changed lines each, one branch, one verdict, one
+  train slot. Re-cut an existing PR list whenever two of its PRs touch the same files. Fewer, larger trains.
 - Verdict: one fresh reviewer, one rank lower, at most medium effort, sections 2 and 3 of `verdict-review.md` only. No
   confirming round unless a Blocking fix was not mechanical.
 - Never fast: files on the repo's strict paths (its `AGENTS.md` names them), migrations, prompts, anything its
   `AGENTS.md` says to ask first. Those keep the full workflow.
 - The verdict block says `Mode: fast` and links one `debt` issue listing the PR's files.
 - Over 15 open `debt` issues in an area, fast mode is refused and the next PR there is a cleanup.
+
+## Superfast mode (when the user says "superfast", "super fast" or "super-fast")
+
+Everything of fast mode, and:
+- **Bigger bundles:** one PR per milestone or per area, up to about 3,000 changed lines; designed or filed PRs are
+  re-cut into those bundles before any build.
+- **Critical tests only:** a new test only for what is critical: money, a write to an outside account or to a
+  customer, auth and trust boundaries, data that cannot be rebuilt (migrations, deletes). Everything else is checked
+  by running it (the app, a script, one real call), never by a new test.
+- **Iterate by rebuilding:** a wrong shape is rebuilt whole, not patched; several full rebuilds of a module are fine.
+  Existing tests must still pass; delete those that pin code a rebuild removed.
+- **Check:** while iterating, only the changed tests; the full check once per bundle, at its push.
+- **Verdict:** one fresh reviewer, one rank lower, low effort, section 2 of `verdict-review.md` plus one question: is
+  every critical item tested? No confirming round unless a Blocking fix was not mechanical.
+- Never superfast: fast mode's list. A bundle touching those parts splits them out to the full workflow.
+- The verdict block says `Mode: superfast` and links one `debt` issue listing the areas left untested.
 
 ## Delegating
 
@@ -133,7 +152,10 @@ Plan review: <passed | the findings and what changed>
 - **Check (hard tier only):** one fresh senior reviewer gets the plan's text and the repo path, nothing else, with `plan-review.md`.
   On a reshape, fix the plan and say what changed under `Plan review:`; a second review only when the shape changed.
 - When the PR opens, copy the section into its description: the watch and the verdict compare the code to it.
-- Split work over about 800 changed lines into several PRs, or stack them.
+- Split work over about 800 changed lines into several PRs, or stack them (fast: 1,500; superfast: 3,000).
+- **Fast or superfast:** the plan starts with its bundles (each bundle's items, files and line estimate). Superfast
+  also marks each item critical (tested) or not (checked by running), and prefers shapes a module can be rebuilt
+  into whole; the design (`plan-design.md`) is told the mode.
 
 ## Watch (while coding)
 

@@ -10,4 +10,8 @@ inventory's files and what you need to settle a doubt; do not explore the repo f
 2. Pick one and say why the others lose.
 3. Write its `## Debt plan` section (Tier, Inventory, Shape, State, Deletes, Net lines), leaving `Plan review:` empty.
 
+In fast or superfast mode (the brief says which), cut the work into bundles along module lines (fast up to ~1,500
+changed lines, superfast ~3,000), and in superfast mark each item critical (money, outside writes, auth, data that
+cannot be rebuilt: tested) or not (checked by running), preferring a shape a module can be rebuilt into whole.
+
 Under 500 words plus the section.

@@ -18,7 +18,7 @@ produce, or one crossing a trust boundary; hardening against any other is lines 
 7. A workaround: a special case for one input, a flag switching behavior, a retry or try-catch hiding an ordering bug?
 8. Does each new name say what it is, one word per concept (below)?
 9. Is a decision this relies on written down: a rule every session needs in AGENTS.md (one line), a module's design in
-   `docs/architecture.md`? A module manual added to AGENTS.md is a finding.
+   `docs/architecture.md` (created if missing) or its header comment? A module manual added to AGENTS.md is a finding.
 10. Is there a shape that lands it at fewer net lines (negative is the target)? What does it delete? A change that
     adds lines says why none would.
 

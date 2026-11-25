@@ -59,7 +59,7 @@ the last step mostly confirms.
   main session reads the diff, runs the tests and commits. A failed launch falls back like any pick.
 - Before the plan or the first delegation, whichever comes first, the main session checks each CLI the picks name is set
   up, then asks its questions at once, in its harness's question tool (Claude: `AskUserQuestion`), one question each,
-  and the answers hold for the session: normal, fast or superfast mode (below); the picks' other CLI or not; and each
+  and the answers hold for the session: normal, fast or ultrafast mode (below); the picks' other CLI or not; and each
   optional pick or not, by its name. Set up: `command -v` finds it, and for `codex`, `codex login status` says logged
   in; for `pi`, `[ -n "$(<key command>)" ]` (never print the key) and `pi --list-models <model id>` lists that exact id.
   A CLI not set up gets no question and its picks are ignored; say so in one line. The user naming an optional pick
@@ -101,7 +101,7 @@ the last step mostly confirms.
 - The verdict block says `Mode: fast` and links one `debt` issue listing the PR's files.
 - Over 15 open `debt` issues in an area, fast mode is refused and the next PR there is a cleanup.
 
-## Superfast mode (on the user's pick at the first question, or when they say "superfast", "super fast" or "super-fast")
+## Ultrafast mode (on the user's pick at the first question, or when they say "ultrafast", "ultra fast", "superfast" or "super fast", hyphenated or not)
 
 Everything of fast mode, and:
 - **Bigger bundles:** one PR per milestone or per area, up to about 3,000 changed lines; designed or filed PRs are
@@ -114,10 +114,10 @@ Everything of fast mode, and:
 - **Check:** while iterating, only the changed tests; push each bundle once, so the full check (pre-push) runs once.
 - **Verdict:** one fresh reviewer, one rank below the tier table's, low effort, section 2 of `verdict-review.md` plus
   one question: is every critical item tested? No confirming round unless a Blocking fix was not mechanical.
-- Never superfast: fast mode's list. A bundle touching those parts splits them out to the full workflow. Hard-tier
+- Never ultrafast: fast mode's list. A bundle touching those parts splits them out to the full workflow. Hard-tier
   work (auth, payments, queues, trust boundaries) keeps its tier's verdict rank and effort: only bundles and the tests
   rule apply to it.
-- The verdict block says `Mode: superfast` and links one `debt` issue listing the PR's files and the areas left
+- The verdict block says `Mode: ultrafast` and links one `debt` issue listing the PR's files and the areas left
   untested. Fast mode's cap of 15 open `debt` issues per area applies.
 
 ## Delegating
@@ -162,8 +162,8 @@ Plan review: <passed | the findings and what changed>
 - **Check (hard tier only):** one fresh senior reviewer gets the plan's text and the repo path, nothing else, with `plan-review.md`.
   On a reshape, fix the plan and say what changed under `Plan review:`; a second review only when the shape changed.
 - When the PR opens, copy the section into its description: the watch and the verdict compare the code to it.
-- Split work over about 800 changed lines into several PRs, or stack them (fast: 1,500; superfast: 3,000).
-- **Fast or superfast:** the plan starts with its bundles (each bundle's items, files and line estimate). Superfast
+- Split work over about 800 changed lines into several PRs, or stack them (fast: 1,500; ultrafast: 3,000).
+- **Fast or ultrafast:** the plan starts with its bundles (each bundle's items, files and line estimate). Ultrafast
   also marks each item critical (tested) or not (checked by running), and prefers shapes a module can be rebuilt
   into whole; the design (`plan-design.md`) is told the mode.
 
@@ -181,12 +181,12 @@ never the worktree you keep editing. Work done in one sitting skips it: the verd
 - Never wait on it, never let it edit. It ends when the PR is ready.
 
 **Stop signals:** revert a failed fix before the next; two failed fixes means re-diagnose (and the tier is now hard); a
-returning bug gets a root-cause fix and a regression test (superfast: when critical); a diff growing far past the
+returning bug gets a root-cause fix and a regression test (ultrafast: when critical); a diff growing far past the
 request means stop and rethink.
 
 **Legible design:** names are design, one source of truth per state, one job per module, finish every migration, a rule
 every session needs goes into the repo's `AGENTS.md` as one line, a module's how and why into `docs/architecture.md` or
-its header comment (AGENTS.md loads into every session and agent: keep it under about 15 KB), fast tests on core logic (superfast: critical
+its header comment (AGENTS.md loads into every session and agent: keep it under about 15 KB), fast tests on core logic (ultrafast: critical
 items only). Follow existing patterns, reuse before creating, clean up as you go; every changed line traces to the
 request or a related cleanup.
 

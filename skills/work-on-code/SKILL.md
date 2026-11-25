@@ -112,8 +112,8 @@ Everything of fast mode, and:
 - **Iterate by rebuilding:** a wrong shape is rebuilt whole, not patched; several full rebuilds of a module are fine.
   Existing tests must still pass; delete those that pin code a rebuild removed.
 - **Check:** while iterating, only the changed tests; push each bundle once, so the full check (pre-push) runs once.
-- **Verdict:** one fresh reviewer, one rank below the tier table's, low effort, section 2 of `verdict-review.md` plus one question: is
-  every critical item tested? No confirming round unless a Blocking fix was not mechanical.
+- **Verdict:** one fresh reviewer, one rank below the tier table's, low effort, section 2 of `verdict-review.md` plus
+  one question: is every critical item tested? No confirming round unless a Blocking fix was not mechanical.
 - Never superfast: fast mode's list. A bundle touching those parts splits them out to the full workflow. Hard-tier
   work (auth, payments, queues, trust boundaries) keeps its tier's verdict rank and effort: only bundles and the tests
   rule apply to it.
@@ -173,15 +173,15 @@ never the worktree you keep editing. Work done in one sitting skips it: the verd
   plan stays true); drift that is wrong gets fixed now.
 - Never wait on it, never let it edit. It ends when the PR is ready.
 
-**Stop signals:** revert a failed fix before the next; two failed fixes means re-diagnose (and the tier is now
-hard); a returning bug gets a root-cause fix and a regression test (superfast: when critical); a diff growing far past the request means stop
-and rethink.
+**Stop signals:** revert a failed fix before the next; two failed fixes means re-diagnose (and the tier is now hard); a
+returning bug gets a root-cause fix and a regression test (superfast: when critical); a diff growing far past the
+request means stop and rethink.
 
-**Legible design:** names are design, one source of truth per state, one job per module, finish every migration,
-a rule every session needs goes into the repo's `AGENTS.md` as one line, a module's how and why into
-`docs/architecture.md` or its header comment (AGENTS.md loads into every session: keep it short), fast tests on core
-logic (superfast: critical items only). Follow existing patterns, reuse before creating, clean up as you go; every changed line traces to the request or
-a related cleanup.
+**Legible design:** names are design, one source of truth per state, one job per module, finish every migration, a rule
+every session needs goes into the repo's `AGENTS.md` as one line, a module's how and why into `docs/architecture.md` or
+its header comment (AGENTS.md loads into every session: keep it short), fast tests on core logic (superfast: critical
+items only). Follow existing patterns, reuse before creating, clean up as you go; every changed line traces to the
+request or a related cleanup.
 
 ## Verdict (before every merge into a default branch; required)
 

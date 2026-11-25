@@ -361,7 +361,7 @@ test("land.ts lands only from the PR's branch, and asks for a base round when th
   expect(first.exitCode).toBe(3); // the base changed the PR's file
   const head = /LAND_BASE_CHECKED=([0-9a-f]+)/.exec(first.stderr.toString())?.[1] as string;
   const past = land(dir, { LAND_BASE_CHECKED: head });
-  expect([past.exitCode, /debt verdict is for/.test(past.stderr.toString())]).toEqual([1, true]); // past the base round, the gate's rule refuses
+  expect([past.exitCode, /behind main/.test(past.stderr.toString())]).toEqual([1, true]); // past the base round, the gate's rule refuses
   sh(base2, "sed -i.bak 9s/9/nine/ shared.ts && rm shared.ts.bak && git add shared.ts");
   c(base2, "commit -q -m again && git push -q --no-verify origin main");
   expect(land(dir, { LAND_BASE_CHECKED: head }).exitCode).toBe(3); // the base moved again: asked again

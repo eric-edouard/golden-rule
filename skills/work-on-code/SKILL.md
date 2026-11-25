@@ -153,8 +153,10 @@ hard); a returning bug gets a root-cause fix and a regression test; a diff growi
 and rethink.
 
 **Legible design:** names are design, one source of truth per state, one job per module, finish every migration,
-write architectural decisions into the repo's `AGENTS.md`, fast tests on core logic. Follow existing patterns, reuse
-before creating, clean up as you go; every changed line traces to the request or a related cleanup.
+a rule every session needs goes into the repo's `AGENTS.md` as one line, a module's how and why into
+`docs/architecture.md` or its header comment (AGENTS.md loads into every session: keep it short), fast tests on core
+logic. Follow existing patterns, reuse before creating, clean up as you go; every changed line traces to the request or
+a related cleanup.
 
 ## Verdict (before every merge into a default branch; required)
 

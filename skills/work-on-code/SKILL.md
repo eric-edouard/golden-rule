@@ -130,7 +130,7 @@ Everything of fast mode, and:
   what you already read.
 - **Session hygiene** (builders and orchestrators): never poll. Start a check, a review or a landing as one
   background command that reports when it ends, then end the turn; when you must wait in the foreground, wait in one
-  command (`gh pr checks --watch`). Sleeping between turns is a bug (the gate refuses a bare `sleep`).
+  command (`gh pr checks --watch`). Sleeping between turns is a bug.
 - **Thin orchestrator.** A session driving several PRs never reads code, diffs or logs itself: it delegates and takes
   back reports of 10 lines or fewer. Its state lives in `PLAN.md`; past about 200k tokens of context it ticks
   `PLAN.md` and compacts (Claude: `/compact`, or asks the user to), since every turn rereads the whole context.
@@ -227,8 +227,9 @@ request or a related cleanup.
 
    "rework needed" cannot merge. "debt added" can, only when each item is a tracked rework or kept on purpose.
 6. **Land in trains, by script.** Every 20–30 minutes one train takes each PR with a passing verdict, merges `origin/<default>`
-   once and runs the full check once: `land.sh <pr> [area...]` (beside this skill, needs bun) does all of this step
-   with no model, run in the background, one PR after another; it stops for a conflict or a base round. A lone PR lands alone. Never merge main into a branch before its train except on
+   once and runs the full check once. `bun land.ts <pr> [area...]` (beside this skill), run in the background from each
+   PR's checkout, one PR after another, does this whole step with no model and stops for a conflict or a base round;
+   without bun, do it by hand as below. A lone PR lands alone. Never merge main into a branch before its train except on
    a real conflict. Take the landing lock (`land-lock.sh take [area...]`, beside this skill;
    `drop` with the same areas once merged or abandoned; the repo's `AGENTS.md` may name its areas, e.g. `phone`,
    `server`), merge `origin/<default>` once, push. The verdict survives catching up when the merge had no conflict

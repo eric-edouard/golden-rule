@@ -334,11 +334,35 @@ test("the PR status hook names each PR a command pushed or edited, and nothing e
   }
 });
 
-test("a bare sleep (waiting by turns) is refused; a loop that waits in one command, or a background one, passes", () => {
-  expect(gate(FEATURE, "sleep 20")).toBe(2);
-  expect(gate(FEATURE, "sleep 20 && gh pr checks 4")).toBe(2);
-  expect(gate(FEATURE, "until gh pr checks 4; do sleep 30; done")).toBe(0);
-  expect(gate(FEATURE, "while true; do gh pr checks 4 && break; sleep 30; done")).toBe(0);
-  expect(run({ cwd: FEATURE, tool_input: { command: "sleep 600", run_in_background: true } })).toBe(0);
-  expect(gate(FEATURE, "echo sleep")).toBe(0);
+test("land.ts lands only from the PR's branch, and asks for a base round when the base changed the PR's files", () => {
+  const LAND = join(import.meta.dir, "land.ts");
+  const c = (cwd: string, cmd: string) => sh(cwd, `git -c user.name=t -c user.email=t@t ${cmd}`);
+  // The base pushes skip pre-push hooks (the global gate refuses code on main).
+  sh(root, "git clone -q origin.git base2");
+  const base2 = join(root, "base2");
+  sh(base2, "seq 1 10 > shared.ts && git add shared.ts");
+  c(base2, "commit -q -m shared && git push -q --no-verify origin main");
+  sh(root, "git clone -q origin.git landing && cd landing && git checkout -q -b pr");
+  const dir = join(root, "landing");
+  sh(dir, "sed -i.bak 1s/1/one/ shared.ts && rm shared.ts.bak && git add shared.ts");
+  c(dir, "commit -q -m pr && git push -q origin pr");
+  const reviewed = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: dir }).stdout.toString().trim();
+  // A fake gh: the PR's view; anything else prints nothing (the compare reads as behind, so the merge is refused).
+  const bin = join(root, "bin");
+  const pr = { baseRefName: "main", headRefName: "pr", headRefOid: reviewed, url: "https://github.com/o/r/pull/7", files: [{ path: "shared.ts" }], body: `## Debt verdict\nReviewed: ${reviewed}\nVerdict: no debt added` };
+  Bun.write(join(root, "pr.json"), JSON.stringify(pr));
+  sh(root, `mkdir -p bin && printf '#!/bin/sh\\n[ "$2" = view ] && cat ${join(root, "pr.json")}\\nexit 0\\n' > bin/gh && chmod +x bin/gh`);
+  const land = (cwd: string, extra: Record<string, string> = {}) =>
+    Bun.spawnSync(["bun", LAND, "7"], { cwd, env: { HOME: process.env.HOME, PATH: `${bin}:${process.env.PATH}`, TMPDIR: root, ...extra } });
+  expect(land(FEATURE).exitCode).toBe(1); // another branch's checkout
+  sh(base2, "sed -i.bak 10s/10/ten/ shared.ts && rm shared.ts.bak && git add shared.ts");
+  c(base2, "commit -q -m far && git push -q --no-verify origin main");
+  const first = land(dir);
+  expect(first.exitCode).toBe(3); // the base changed the PR's file
+  const head = /LAND_BASE_CHECKED=([0-9a-f]+)/.exec(first.stderr.toString())?.[1] as string;
+  const past = land(dir, { LAND_BASE_CHECKED: head });
+  expect([past.exitCode, /debt verdict is for/.test(past.stderr.toString())]).toEqual([1, true]); // past the base round, the gate's rule refuses
+  sh(base2, "sed -i.bak 9s/9/nine/ shared.ts && rm shared.ts.bak && git add shared.ts");
+  c(base2, "commit -q -m again && git push -q --no-verify origin main");
+  expect(land(dir, { LAND_BASE_CHECKED: head }).exitCode).toBe(3); // the base moved again: asked again
 });

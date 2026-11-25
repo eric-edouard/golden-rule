@@ -274,6 +274,10 @@ const VALUED = new Set([
 export type Pr = { baseRefName: string; body: string | null; files: { path: string }[]; headRefOid: string; url: string };
 export const PR_FIELDS = "baseRefName,body,files,headRefOid,url";
 
+const verdictSection = (pr: Pr) => (pr.body ?? "").split(/^## Debt verdict\s*$/m)[1] ?? "";
+/** The sha a PR's debt verdict reviewed, if it has one. */
+export const reviewedOf = (pr: Pr) => verdictSection(pr).match(/^Reviewed:\s*`?([0-9a-f]{7,40})/m)?.[1];
+
 /**
  * The merge gate's rule on a PR's debt verdict, for the gate and the PR's status alike: `success` (it may merge),
  * `pending` (no verdict for its head yet, or its base moved) or `failure` ("rework needed"), with why.
@@ -284,8 +288,8 @@ export function verdictOf(dir: string, pr: Pr, local: boolean): { state: "succes
   if (pr.files.length > 0 && pr.files.every((f) => isData(f.path, all))) {
     return { state: "success", why: "docs and data only" }; // nothing functional to review
   }
-  const section = (pr.body ?? "").split(/^## Debt verdict\s*$/m)[1] ?? "";
-  const reviewed = section.match(/^Reviewed:\s*`?([0-9a-f]{7,40})/m)?.[1];
+  const section = verdictSection(pr);
+  const reviewed = reviewedOf(pr);
   const verdict = section.match(/^Verdict:\s*(.+)$/m)?.[1]?.trim();
   if (!(reviewed && verdict)) {
     return {
@@ -435,19 +439,6 @@ export function gitCall(w: string[], cwd: string) {
   return { dir, args: w.slice(i) };
 }
 
-/**
- * Refuses a bare `sleep` outside a loop: waiting by turns (sleep, then look, then sleep) rereads the whole context each
- * turn. A loop that waits in one command, or a background command, passes.
- */
-export function checkPoll(split: string[][], background: boolean) {
-  const loops = split.some((w) => ["while", "until", "for", "do"].includes(w[0] as string));
-  if (!(background || loops) && split.some((w) => program(w)[0] === "sleep")) {
-    deny(
-      "waiting by turns rereads the whole context each time. Wait in one command (`gh pr checks --watch`, `until <ready>; do sleep 30; done`) or run it in the background."
-    );
-  }
-}
-
 function check(script: string, from: string, split = commands(script)) {
   for (const { w, cwd, stdin } of walk(script, from, split)) {
     const [cmd, ...args] = w;
@@ -492,12 +483,10 @@ if (import.meta.main && process.argv[2] === "pre-push") {
     const raw = input.tool_input?.command ?? input.tool_input?.cmd ?? "";
     // Codex sends argv, usually ["bash", "-lc", "<script>"]; other argv is one command's words, never shell syntax.
     const cwd = input.cwd ?? process.cwd();
-    const script = Array.isArray(raw) ? String(raw[2] ?? "") : String(raw);
-    checkPoll(commands(script), input.tool_input?.run_in_background === true);
     if (Array.isArray(raw) && !(raw.length >= 3 && SHELL.test(String(raw[0])) && /^-\w*c$/.test(String(raw[1])))) {
       check("", cwd, [raw.map(String)]);
     } else {
-      check(script, cwd);
+      check(Array.isArray(raw) ? String(raw[2]) : String(raw), cwd);
     }
   } catch (e) {
     // A gate that crashes must not let the command through.

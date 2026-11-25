@@ -46,15 +46,15 @@ if (!(shown(["git", "fetch", "-q", "origin", base]) && shown(["git", "merge", "-
 const head = run(dir, ["git", "rev-parse", "HEAD"]) as string;
 const reviewed = reviewedOf(before);
 const files = before.files.map((f) => f.path);
+// null when the diff fails (an unknown sha): the base round is then asked for, never skipped.
 const moved = reviewed && files.length > 0 ? run(dir, ["git", "diff", "--name-only", reviewed, head, "--", ...files]) : "";
 if (!shown(["git", "push", "-q", "origin", "HEAD"])) {
   fail("push failed (the check)");
 }
 if (moved !== "" && process.env.LAND_BASE_CHECKED !== head) {
-  // null: the diff failed (an unknown sha), so the base round is asked for rather than skipped.
   fail(`${base} changed PR ${pr}'s files: base round on git diff ${reviewed}..${head} -- <the PR's files>; then LAND_BASE_CHECKED=${head}`, 3);
 }
-const { state, why } = verdictOf(dir, view(), true);
+const { state, why } = verdictOf(dir, { ...view(), headRefOid: head }, true) // GitHub may not show the push yet;
 if (state !== "success") {
   fail(why);
 }

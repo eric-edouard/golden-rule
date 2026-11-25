@@ -132,7 +132,7 @@ Everything of fast mode, and:
   background command that reports when it ends, then end the turn; when you must wait in the foreground, wait in one
   command (`gh pr checks --watch`). Sleeping between turns is a bug.
 - **Thin orchestrator.** A session driving several PRs never reads code, diffs or logs itself: it delegates and takes
-  back reports of 10 lines or fewer. Its state lives in `PLAN.md`. Any main session past about 200k tokens of context, or
+  back reports of 10 lines or fewer. Its state lives in `PLAN.md`. Any main session past about 500k tokens of context, or
   at the harness's context warning, ticks `PLAN.md` and compacts with this prompt, or gives the user the line to paste:
   `/compact Keep: the goal, PLAN.md's open items, each PR's number and stage, decisions and why, the user's open
   asks. Drop: file contents, diffs, logs, command output.`

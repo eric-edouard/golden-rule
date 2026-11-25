@@ -28,6 +28,8 @@ It refuses:
 - the same `codex exec` unless its last `-c`/`--config` values set `allow_login_shell=false` and
   `shell_environment_policy.inherit="core"` (`core` quoted or not): without them its commands see the login shell's secrets,
   and what they print goes to OpenAI. Values after `--` or on an enclosing `sh -c` do not count.
+- a bare `sleep` outside a loop, unless the command runs in the background: waiting by turns rereads the whole
+  context each turn. A loop that waits in one command (`until <ready>; do sleep 30; done`) passes.
 - a plan (Claude's ExitPlanMode; Codex has no plan tool) with no `## Debt plan` section.
 - `gh pr merge` unless the PR description has `## Debt verdict` with a `Verdict:` other than "rework needed" and a
   `Reviewed:` sha equal to the PR's current head, or carried to it across a clean merge of the base (run from the
@@ -67,3 +69,6 @@ checkout's HEAD is its head. Tag-only, deleting and dry-run pushes are ignored.
   after) is the head's tree, pending otherwise.
 
 It never refuses anything and is silent on errors and branches with no open PR.
+
+`land.sh <pr> [area...]` (verdict step 6) runs the gate on its own merge before making it, since the tool hook sees
+only `land.sh`.

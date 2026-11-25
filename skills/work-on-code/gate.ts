@@ -435,6 +435,19 @@ export function gitCall(w: string[], cwd: string) {
   return { dir, args: w.slice(i) };
 }
 
+/**
+ * Refuses a bare `sleep` outside a loop: waiting by turns (sleep, then look, then sleep) rereads the whole context each
+ * turn. A loop that waits in one command, or a background command, passes.
+ */
+export function checkPoll(split: string[][], background: boolean) {
+  const loops = split.some((w) => ["while", "until", "for", "do"].includes(w[0] as string));
+  if (!(background || loops) && split.some((w) => program(w)[0] === "sleep")) {
+    deny(
+      "waiting by turns rereads the whole context each time. Wait in one command (`gh pr checks --watch`, `until <ready>; do sleep 30; done`) or run it in the background."
+    );
+  }
+}
+
 function check(script: string, from: string, split = commands(script)) {
   for (const { w, cwd, stdin } of walk(script, from, split)) {
     const [cmd, ...args] = w;
@@ -479,10 +492,12 @@ if (import.meta.main && process.argv[2] === "pre-push") {
     const raw = input.tool_input?.command ?? input.tool_input?.cmd ?? "";
     // Codex sends argv, usually ["bash", "-lc", "<script>"]; other argv is one command's words, never shell syntax.
     const cwd = input.cwd ?? process.cwd();
+    const script = Array.isArray(raw) ? String(raw[2] ?? "") : String(raw);
+    checkPoll(commands(script), input.tool_input?.run_in_background === true);
     if (Array.isArray(raw) && !(raw.length >= 3 && SHELL.test(String(raw[0])) && /^-\w*c$/.test(String(raw[1])))) {
       check("", cwd, [raw.map(String)]);
     } else {
-      check(Array.isArray(raw) ? String(raw[2]) : String(raw), cwd);
+      check(script, cwd);
     }
   } catch (e) {
     // A gate that crashes must not let the command through.

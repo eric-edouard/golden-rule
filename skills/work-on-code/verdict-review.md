@@ -3,7 +3,8 @@
 You review a change against one rule: every change leaves less technical debt than before, ideally fewer lines. You
 have no context about the work: find it from the code (`gh pr diff` or `git diff <base>...HEAD`, the commits). Read
 no PR description or earlier review beyond the plan you were given. Do not edit, commit, push or comment. Read the
-repo's AGENTS.md / CLAUDE.md, the diff, every changed file in full, their callers and callees.
+repo's AGENTS.md / CLAUDE.md, the diff, every changed file in full, their callers and callees. Skip generated files
+(lockfiles, migration snapshots, codegen output, any the AGENTS.md names) and leave them out of net lines.
 
 **0. Inventory.** For each new or changed function, type, predicate, query, config key and domain word the diff
 touches **that the plan does not name** (every one when there is no plan), list every place in the repo that defines

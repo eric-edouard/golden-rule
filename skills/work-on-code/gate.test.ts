@@ -333,3 +333,12 @@ test("the PR status hook names each PR a command pushed or edited, and nothing e
     expect([cmd, touched(cmd, "/r")]).toEqual([cmd, []]);
   }
 });
+
+test("a bare sleep (waiting by turns) is refused; a loop that waits in one command, or a background one, passes", () => {
+  expect(gate(FEATURE, "sleep 20")).toBe(2);
+  expect(gate(FEATURE, "sleep 20 && gh pr checks 4")).toBe(2);
+  expect(gate(FEATURE, "until gh pr checks 4; do sleep 30; done")).toBe(0);
+  expect(gate(FEATURE, "while true; do gh pr checks 4 && break; sleep 30; done")).toBe(0);
+  expect(run({ cwd: FEATURE, tool_input: { command: "sleep 600", run_in_background: true } })).toBe(0);
+  expect(gate(FEATURE, "echo sleep")).toBe(0);
+});

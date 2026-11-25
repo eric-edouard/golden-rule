@@ -67,3 +67,6 @@ checkout's HEAD is its head. Tag-only, deleting and dry-run pushes are ignored.
   after) is the head's tree, pending otherwise.
 
 It never refuses anything and is silent on errors and branches with no open PR.
+
+`land.ts <pr> [area...]` (verdict step 6) applies the gate's verdict rule (`verdictOf`) to its own merge before making
+it, since the tool hook sees only `land.ts`.

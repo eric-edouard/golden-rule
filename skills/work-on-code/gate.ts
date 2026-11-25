@@ -274,6 +274,10 @@ const VALUED = new Set([
 export type Pr = { baseRefName: string; body: string | null; files: { path: string }[]; headRefOid: string; url: string };
 export const PR_FIELDS = "baseRefName,body,files,headRefOid,url";
 
+const verdictSection = (pr: Pr) => (pr.body ?? "").split(/^## Debt verdict\s*$/m)[1] ?? "";
+/** The sha a PR's debt verdict reviewed, if it has one. */
+export const reviewedOf = (pr: Pr) => verdictSection(pr).match(/^Reviewed:\s*`?([0-9a-f]{7,40})/m)?.[1];
+
 /**
  * The merge gate's rule on a PR's debt verdict, for the gate and the PR's status alike: `success` (it may merge),
  * `pending` (no verdict for its head yet, or its base moved) or `failure` ("rework needed"), with why.
@@ -284,8 +288,8 @@ export function verdictOf(dir: string, pr: Pr, local: boolean): { state: "succes
   if (pr.files.length > 0 && pr.files.every((f) => isData(f.path, all))) {
     return { state: "success", why: "docs and data only" }; // nothing functional to review
   }
-  const section = (pr.body ?? "").split(/^## Debt verdict\s*$/m)[1] ?? "";
-  const reviewed = section.match(/^Reviewed:\s*`?([0-9a-f]{7,40})/m)?.[1];
+  const section = verdictSection(pr);
+  const reviewed = reviewedOf(pr);
   const verdict = section.match(/^Verdict:\s*(.+)$/m)?.[1]?.trim();
   if (!(reviewed && verdict)) {
     return {

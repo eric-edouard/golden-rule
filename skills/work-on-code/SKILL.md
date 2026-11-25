@@ -129,9 +129,14 @@ Everything of fast mode, and:
 - **Small and targeted, or a chain of dependent steps:** the main session does it itself; a cold agent would reread
   what you already read.
 - **Session hygiene** (builders and orchestrators): never poll. Start a check, a review or a landing as one
-  background command that reports when it ends, then end the turn. A sleep or tail loop in a session is a bug.
+  background command that reports when it ends, then end the turn; when you must wait in the foreground, wait in one
+  command (`gh pr checks --watch`). Sleeping between turns is a bug.
+- **Thin orchestrator.** A session driving several PRs never reads code, diffs or logs itself: it delegates and takes
+  back reports of 10 lines or fewer. Its state lives in `PLAN.md`; past about 200k tokens of context it ticks
+  `PLAN.md` and compacts (Claude: `/compact`, or asks the user to), since every turn rereads the whole context.
 - **One builder, one PR.** A builder (agent or session) builds one PR through its verdict fixes, then ends; the next
-  PR gets a fresh one with a one-page brief. Every turn rereads the whole context, so its length is the cost: keep
+  PR gets a fresh one with a one-page brief. A delegated builder runs at senior rank (junior for mechanical volume),
+  never frontier; its brief names the files and the tests to run, and it runs only those while iterating. Every turn rereads the whole context, so its length is the cost: keep
   command output short (failures only, `tail`) and read files by range.
 
 ## Plan (before code)
@@ -179,7 +184,7 @@ request means stop and rethink.
 
 **Legible design:** names are design, one source of truth per state, one job per module, finish every migration, a rule
 every session needs goes into the repo's `AGENTS.md` as one line, a module's how and why into `docs/architecture.md` or
-its header comment (AGENTS.md loads into every session: keep it short), fast tests on core logic (superfast: critical
+its header comment (AGENTS.md loads into every session and agent: keep it under about 15 KB), fast tests on core logic (superfast: critical
 items only). Follow existing patterns, reuse before creating, clean up as you go; every changed line traces to the
 request or a related cleanup.
 
@@ -221,8 +226,10 @@ request or a related cleanup.
    ```
 
    "rework needed" cannot merge. "debt added" can, only when each item is a tracked rework or kept on purpose.
-6. **Land in trains.** Every 20–30 minutes one train takes each PR with a passing verdict, merges `origin/<default>`
-   once and runs the full check once. A lone PR lands alone. Never merge main into a branch before its train except on
+6. **Land in trains, by script.** Every 20–30 minutes one train takes each PR with a passing verdict, merges `origin/<default>`
+   once and runs the full check once. `bun land.ts <pr> [area...]` (beside this skill), run in the background from each
+   PR's checkout, one PR after another, does this whole step with no model and stops for a conflict or a base round;
+   without bun, do it by hand as below. A lone PR lands alone. Never merge main into a branch before its train except on
    a real conflict. Take the landing lock (`land-lock.sh take [area...]`, beside this skill;
    `drop` with the same areas once merged or abandoned; the repo's `AGENTS.md` may name its areas, e.g. `phone`,
    `server`), merge `origin/<default>` once, push. The verdict survives catching up when the merge had no conflict
@@ -236,6 +243,8 @@ request or a related cleanup.
 
 ## Rules
 
+- Generated files (lockfiles, migration snapshots, codegen output; the repo's `AGENTS.md` may name more) are not
+  read by reviewers and count in neither net lines nor bundle sizes.
 - Code goes through a branch and a PR (`gh pr create`); agents never push code to `main`/`master`.
 - Small tier skips plan review and watch, never the verdict. Something merged without a verdict gets one right
   after; its findings are fixed through a new PR.

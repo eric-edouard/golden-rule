@@ -132,8 +132,12 @@ Everything of fast mode, and:
   background command that reports when it ends, then end the turn; when you must wait in the foreground, wait in one
   command (`gh pr checks --watch`). Sleeping between turns is a bug.
 - **Thin orchestrator.** A session driving several PRs never reads code, diffs or logs itself: it delegates and takes
-  back reports of 10 lines or fewer. Its state lives in `PLAN.md`; past about 200k tokens of context it ticks
-  `PLAN.md` and compacts (Claude: `/compact`, or asks the user to), since every turn rereads the whole context.
+  back reports of 10 lines or fewer. Its state lives in `PLAN.md`.
+- **Context load guard** (main sessions): every turn rereads the whole context. At each checkpoint, when the context
+  passes about 200k tokens (the harness's context warning, or a long run of turns), tick `PLAN.md`, then compact with
+  a prompt that keeps the state and drops the reads; where the session cannot run it, give the user the line to paste:
+  `/compact Keep: the goal, PLAN.md's open items, each PR's number and stage, decisions and why, the user's open
+  asks. Drop: file contents, diffs, logs, command output.`
 - **One builder, one PR.** A builder (agent or session) builds one PR through its verdict fixes, then ends; the next
   PR gets a fresh one with a one-page brief. A delegated builder runs at senior rank (junior for mechanical volume),
   never frontier; its brief names the files and the tests to run, and it runs only those while iterating. Every turn rereads the whole context, so its length is the cost: keep

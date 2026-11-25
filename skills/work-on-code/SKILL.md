@@ -101,7 +101,7 @@ the last step mostly confirms.
 - The verdict block says `Mode: fast` and links one `debt` issue listing the PR's files.
 - Over 15 open `debt` issues in an area, fast mode is refused and the next PR there is a cleanup.
 
-## Superfast mode (when the user says "superfast", "super fast" or "super-fast")
+## Superfast mode (on the user's pick at the first question, or when they say "superfast", "super fast" or "super-fast")
 
 Everything of fast mode, and:
 - **Bigger bundles:** one PR per milestone or per area, up to about 3,000 changed lines; designed or filed PRs are
@@ -111,11 +111,14 @@ Everything of fast mode, and:
   by running it (the app, a script, one real call), never by a new test.
 - **Iterate by rebuilding:** a wrong shape is rebuilt whole, not patched; several full rebuilds of a module are fine.
   Existing tests must still pass; delete those that pin code a rebuild removed.
-- **Check:** while iterating, only the changed tests; the full check once per bundle, at its push.
-- **Verdict:** one fresh reviewer, one rank lower, low effort, section 2 of `verdict-review.md` plus one question: is
+- **Check:** while iterating, only the changed tests; push each bundle once, so the full check (pre-push) runs once.
+- **Verdict:** one fresh reviewer, one rank below the tier table's, low effort, section 2 of `verdict-review.md` plus one question: is
   every critical item tested? No confirming round unless a Blocking fix was not mechanical.
-- Never superfast: fast mode's list. A bundle touching those parts splits them out to the full workflow.
-- The verdict block says `Mode: superfast` and links one `debt` issue listing the areas left untested.
+- Never superfast: fast mode's list. A bundle touching those parts splits them out to the full workflow. Hard-tier
+  work (auth, payments, queues, trust boundaries) keeps its tier's verdict rank and effort: only bundles and the tests
+  rule apply to it.
+- The verdict block says `Mode: superfast` and links one `debt` issue listing the PR's files and the areas left
+  untested. Fast mode's cap of 15 open `debt` issues per area applies.
 
 ## Delegating
 
@@ -171,13 +174,13 @@ never the worktree you keep editing. Work done in one sitting skips it: the verd
 - Never wait on it, never let it edit. It ends when the PR is ready.
 
 **Stop signals:** revert a failed fix before the next; two failed fixes means re-diagnose (and the tier is now
-hard); a returning bug gets a root-cause fix and a regression test; a diff growing far past the request means stop
+hard); a returning bug gets a root-cause fix and a regression test (superfast: when critical); a diff growing far past the request means stop
 and rethink.
 
 **Legible design:** names are design, one source of truth per state, one job per module, finish every migration,
 a rule every session needs goes into the repo's `AGENTS.md` as one line, a module's how and why into
 `docs/architecture.md` or its header comment (AGENTS.md loads into every session: keep it short), fast tests on core
-logic. Follow existing patterns, reuse before creating, clean up as you go; every changed line traces to the request or
+logic (superfast: critical items only). Follow existing patterns, reuse before creating, clean up as you go; every changed line traces to the request or
 a related cleanup.
 
 ## Verdict (before every merge into a default branch; required)

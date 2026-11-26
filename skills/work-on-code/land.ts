@@ -16,7 +16,8 @@ function fail(why: string, code = 1): never {
   process.exit(code);
 }
 /** Runs a command with its output shown; true when it succeeded. */
-const shown = (cmd: string[]) => Bun.spawnSync(cmd, { cwd: dir, stdio: ["inherit", "inherit", "inherit"] }).exitCode === 0;
+const shown = (cmd: string[], env?: Record<string, string>) =>
+  Bun.spawnSync(cmd, { cwd: dir, env: { ...process.env, ...env }, stdio: ["inherit", "inherit", "inherit"] }).exitCode === 0;
 const view = () => {
   const json = run(dir, ["gh", "pr", "view", pr as string, "--json", `${PR_FIELDS},headRefName`]);
   return json ? (JSON.parse(json) as Pr & { headRefName: string }) : fail(`cannot read PR ${pr}`);
@@ -32,11 +33,16 @@ if (run(dir, ["git", "branch", "--show-current"]) !== before.headRefName) {
 if (run(dir, ["git", "status", "--porcelain"])) {
   fail("this checkout has uncommitted changes");
 }
-const lock = (op: string) => shown(["sh", join(import.meta.dir, "land-lock.sh"), op, ...areas]);
+// The lock records this process, so a landing killed past these handlers (SIGKILL) frees it at the next take.
+const lock = (op: string) => shown(["sh", join(import.meta.dir, "land-lock.sh"), op, ...areas], { LAND_LOCK_PID: String(process.pid) });
 if (!lock("take")) {
   fail("could not take the landing lock");
 }
 process.on("exit", () => lock("drop"));
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  process.on(signal, () => fail(`stopped by ${signal}`));
+}
+process.on("uncaughtException", (e) => fail(String(e)));
 
 const base = before.baseRefName;
 if (!(shown(["git", "fetch", "-q", "origin", base]) && shown(["git", "merge", "-q", "--no-edit", `origin/${base}`]))) {

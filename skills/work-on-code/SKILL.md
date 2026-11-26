@@ -59,8 +59,10 @@ the last step mostly confirms.
   main session reads the diff, runs the tests and commits. A failed launch falls back like any pick.
 - Before the plan or the first delegation, whichever comes first, the main session checks each CLI the picks name is set
   up, then asks its questions at once, in its harness's question tool (Claude: `AskUserQuestion`), one question each,
-  and the answers hold for the session: normal, fast or ultrafast mode (below); the picks' other CLI or not; and each
-  optional pick or not, by its name. Set up: `command -v` finds it, and for `codex`, `codex login status` says logged
+  and the answers hold for the session: normal, fast or ultrafast mode (below); the picks' other CLI or not; each
+  optional pick or not, by its name; and in Claude, compacting at 300k tokens or not (yes sets `modelSettings.<session's model>.autoCompactWindow`
+  to `300000` in the repo's `.claude/settings.local.json`, no removes it; it outranks user settings, reloads live and
+  holds for the repo until a later no). Set up: `command -v` finds it, and for `codex`, `codex login status` says logged
   in; for `pi`, `[ -n "$(<key command>)" ]` (never print the key) and `pi --list-models <model id>` lists that exact id.
   A CLI not set up gets no question and its picks are ignored; say so in one line. The user naming an optional pick
   later ("deepseek") turns it on. A delegate keeps the session's answers from its brief; no one to ask (loop, headless,
@@ -132,10 +134,9 @@ Everything of fast mode, and:
   background command that reports when it ends, then end the turn; when you must wait in the foreground, wait in one
   command (`gh pr checks --watch`). Sleeping between turns is a bug.
 - **Thin orchestrator.** A session driving several PRs never reads code, diffs or logs itself: it delegates and takes
-  back reports of 10 lines or fewer. Its state lives in `PLAN.md`. Any main session past about 500k tokens of context, or
-  at the harness's context warning, ticks `PLAN.md` and compacts with this prompt, or gives the user the line to paste:
-  `/compact Keep: the goal, PLAN.md's open items, each PR's number and stage, decisions and why, the user's open
-  asks. Drop: file contents, diffs, logs, command output.`
+  back reports of 10 lines or fewer. Its state lives in `PLAN.md`, ticked at every checkpoint, so compaction loses nothing.
+  Compaction follows `compact.md` (beside this skill): Claude's `PreCompact` hook feeds it to every compaction; elsewhere,
+  past about 300k tokens or at the harness's context warning, compact with its text.
 - **One builder, one PR.** A builder (agent or session) builds one PR through its verdict fixes, then ends; the next
   PR gets a fresh one with a one-page brief. A delegated builder runs at senior rank (junior for mechanical volume),
   never frontier; its brief names the files and the tests to run, and it runs only those while iterating. Every turn rereads the whole context, so its length is the cost: keep

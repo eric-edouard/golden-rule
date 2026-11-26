@@ -133,14 +133,21 @@ Everything of fast mode, and:
 - **Session hygiene** (builders and orchestrators): never poll. Start a check, a review or a landing as one
   background command that reports when it ends, then end the turn; when you must wait in the foreground, wait in one
   command (`gh pr checks --watch`). Sleeping between turns is a bug.
-- **Thin orchestrator.** A session driving several PRs never reads code, diffs or logs itself: it delegates and takes
-  back reports of 10 lines or fewer. Its state lives in `PLAN.md`, ticked at every checkpoint, so compaction loses nothing.
-  Compaction follows `compact.md` (beside this skill): Claude's `PreCompact` hook feeds it to every compaction; elsewhere,
-  past about 300k tokens or at the harness's context warning, compact with its text.
+- **Main session context.** Every turn rereads it, so its length is the cost.
+  - Keep only the goal, the plan, decisions, PR numbers and stages, and the user's open asks. Bulk (investigations across
+    many files, logs, audits, reviews, screenshots of many screens) goes to a subagent that returns 10 lines or fewer, with file:line evidence.
+  - Read files by range or grep, never whole large files. Command output is tailed, filtered or counted, never dumped
+    (tests: failures only; logs: grep plus tail).
+  - Never read a subagent's transcript file; wait for its report. To follow up, message that agent, not a new one.
+  - Batch independent tool calls in one message; don't reread what is in context.
+  - State lives on disk (`PLAN.md`, ticked at every checkpoint, and the PR bodies), so a compaction loses nothing; after one, resume from them, not memory.
+    Compaction follows `compact.md` (beside this skill): Claude's `PreCompact` hook feeds it to every compaction; elsewhere,
+    past about 300k tokens or at the harness's context warning, compact with its text.
+  - A screenshot is costly: take one only to judge visuals, at reduced scale when possible; read state from the accessibility or text tree.
+  - A session driving several PRs never reads code, diffs or logs itself: it delegates.
 - **One builder, one PR.** A builder (agent or session) builds one PR through its verdict fixes, then ends; the next
   PR gets a fresh one with a one-page brief. A delegated builder runs at senior rank (junior for mechanical volume),
-  never frontier; its brief names the files and the tests to run, and it runs only those while iterating. Every turn rereads the whole context, so its length is the cost: keep
-  command output short (failures only, `tail`) and read files by range.
+  never frontier; its brief names the files and the tests to run, and it runs only those while iterating.
 
 ## Plan (before code)
 

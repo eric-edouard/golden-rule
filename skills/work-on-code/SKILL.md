@@ -141,8 +141,9 @@ Everything of fast mode, and:
   - Never read a subagent's transcript file; wait for its report. To follow up, message that agent, not a new one.
   - Batch independent tool calls in one message; don't reread what is in context.
   - State lives on disk (`PLAN.md`, ticked at every checkpoint, and the PR bodies), so a compaction loses nothing; after one, resume from them, not memory.
-    Compaction follows `compact.md` (beside this skill): Claude's `PreCompact` hook feeds it to every compaction; elsewhere,
-    past about 300k tokens or at the harness's context warning, compact with its text.
+    Compaction follows `compact.md` (beside this skill): Claude's `PreCompact` hook feeds it to every compaction.
+  - A session never knows its size and Claude Code cannot run `/compact`. At each checkpoint and after long inline work, estimate it; with no gauge, 35 tool calls since the last compaction is about 200k (delegate even small fixes: hands-on reading and editing count), 50 is past 300k.
+  - Past 300k with auto-compaction off: end the turn asking the user to run `/compact`, with the line to paste: `/compact ` plus `compact.md`'s text; once per threshold, never go on silently. Elsewhere, compact with its text.
   - A screenshot is costly: take one only to judge visuals, at reduced scale when possible; read state from the accessibility or text tree.
 - **One builder, one PR.** A builder (agent or session) builds one PR through its verdict fixes, then ends; the next
   PR gets a fresh one with a one-page brief. A delegated builder runs at senior rank (junior for mechanical volume),

@@ -149,13 +149,16 @@ Everything of fast mode, and:
   PR gets a fresh one with a one-page brief. A delegated builder runs at senior rank (junior for mechanical volume),
   never frontier; its brief names the files and the tests to run, and it runs only those while iterating, with output short and files read by range.
 - **Thin orchestrator** (a session running several builders): it plans, launches and relays; it acts only when woken.
-  - Each open item of the plan's checklist names its dependencies (`needs: <item>`); the plan states a parallel cap.
+  - Each open item of the plan's checklist names its dependencies (`needs: <item>`); the plan states a parallel cap
+    (default 4 builders).
   - On every wake, before ending the turn, it launches each item whose dependencies are met, up to the cap.
   - In Claude, a session heartbeat (`CronCreate`, every ~10 minutes) wakes it for the same refill: a wake, not a
-    status poll, so agents ending together never leave ready work idle.
-  - Landing (verdict step 6: the `land.ts` runs, base rounds, verdict line updates) is one background lander agent's
-    job, never the orchestrator's in the foreground.
-  - Dependent work starts from the open PR's branch, never waits for its merge, and lands after it.
+    status poll, so agents ending together never leave ready work idle. Delete it when the checklist is done.
+  - Landing (verdict step 6) is started by one background lander per repo: it runs `land.ts`, has a junior do the
+    base rounds and updates verdict lines; never the orchestrator in the foreground.
+  - Dependent work starts, once the parent's builder has ended, from the open PR's branch, never waiting for its
+    merge (a stacked PR: an exception to re-cutting into one bundle). After the parent merges, retarget it to the
+    default branch; that catch-up gets the base round of step 6.
 
 ## Plan (before code)
 

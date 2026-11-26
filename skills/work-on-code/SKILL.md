@@ -134,7 +134,7 @@ Everything of fast mode, and:
 - **Thin orchestrator.** A session driving several PRs never reads code, diffs or logs itself: it delegates and takes
   back reports of 10 lines or fewer. Its state lives in `PLAN.md`, ticked at every checkpoint, so compaction loses nothing.
   Compaction follows `compact.md` (beside this skill): Claude's `PreCompact` hook feeds it to every compaction; elsewhere,
-  past about 200k tokens or at the harness's context warning, compact with its text.
+  past about 300k tokens or at the harness's context warning, compact with its text.
 - **One builder, one PR.** A builder (agent or session) builds one PR through its verdict fixes, then ends; the next
   PR gets a fresh one with a one-page brief. A delegated builder runs at senior rank (junior for mechanical volume),
   never frontier; its brief names the files and the tests to run, and it runs only those while iterating. Every turn rereads the whole context, so its length is the cost: keep

@@ -144,10 +144,9 @@ Everything of fast mode, and:
     Compaction follows `compact.md` (beside this skill): Claude's `PreCompact` hook feeds it to every compaction; elsewhere,
     past about 300k tokens or at the harness's context warning, compact with its text.
   - A screenshot is costly: take one only to judge visuals, at reduced scale when possible; read state from the accessibility or text tree.
-  - A session driving several PRs never reads code, diffs or logs itself: it delegates.
 - **One builder, one PR.** A builder (agent or session) builds one PR through its verdict fixes, then ends; the next
   PR gets a fresh one with a one-page brief. A delegated builder runs at senior rank (junior for mechanical volume),
-  never frontier; its brief names the files and the tests to run, and it runs only those while iterating.
+  never frontier; its brief names the files and the tests to run, and it runs only those while iterating, with output short and files read by range.
 
 ## Plan (before code)
 

@@ -292,6 +292,7 @@ test("the landing lock: one holder per repo across worktrees, only the holder dr
   const env = { HOME: process.env.HOME, PATH: process.env.PATH, TMPDIR: root, LAND_LOCK_POLL: "0.1" };
   const lock = (cwd: string, op: string, ...areas: string[]) =>
     Bun.spawnSync(["sh", LOCK, op, ...areas], { cwd, env, timeout: 1000 }).exitCode;
+  const b = join(root, "locked-b");
   expect(lock(repo, "take")).toBe(0);
   expect(lock(repo, "take")).toBe(0); // the holder again
   expect(lock(join(root, "locked-b"), "drop")).toBe(1);
@@ -300,8 +301,12 @@ test("the landing lock: one holder per repo across worktrees, only the holder dr
   expect(lock(join(root, "locked-b"), "take")).toBe(0); // stale: taken over
   expect(lock(join(root, "locked-b"), "drop")).toBe(0);
   expect(lock(repo, "take")).toBe(0);
+  // A lock whose landing process died is taken over at once, whatever its age.
+  const dead = Bun.spawnSync(["true"]).pid;
+  expect(Bun.spawnSync(["sh", LOCK, "take", "gone"], { cwd: repo, env: { ...env, LAND_LOCK_PID: String(dead) } }).exitCode).toBe(0);
+  expect(lock(b, "take", "gone")).toBe(0);
+  expect(lock(b, "drop", "gone")).toBe(0);
   // Areas: different areas land in parallel; a PR spanning a held area waits; a bad name is refused.
-  const b = join(root, "locked-b");
   expect(lock(repo, "take", "server")).toBe(0);
   expect(lock(b, "take", "phone")).toBe(0);
   expect(lock(b, "take", "server", "phone")).not.toBe(0); // waits on server, killed by the timeout

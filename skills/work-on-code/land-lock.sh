@@ -2,7 +2,8 @@
 # The landing lock (work-on-code, verdict step 6): one PR lands at a time per repository and area, all worktrees included.
 #   land-lock.sh take [area...]   wait for each area's lock (none: the whole repo's), in sorted order, then hold them for this branch
 #   land-lock.sh drop [area...]   release them (only the branch holding a lock can)
-# A lock older than LAND_LOCK_STALE minutes (default 90) was abandoned and is taken over. The lock only saves wasted
+# LAND_LOCK_PID (land.ts passes its own) is kept beside the branch: once that process is gone, the lock is taken over at
+# once. Any lock older than LAND_LOCK_STALE minutes (default 90) was abandoned and is taken over. The lock only saves wasted
 # catch-ups: the gate's behind-base check keeps a landing correct, except that PRs of different areas may merge without
 # testing each other (the trade areas make). Areas are case-folded (Phone is phone).
 # ponytail: the whole repo's lock and an area's don't exclude each other; a repo that names areas always passes one.
@@ -18,16 +19,24 @@ done
 holder() { cat "$lock/branch" 2>/dev/null || true; }
 take() {
   until mkdir "$lock" 2>/dev/null; do
-    [ "$(holder)" = "$me" ] && return 0
+    [ "$(holder)" = "$me" ] && break
+    pid=$(cat "$lock/pid" 2>/dev/null || true)
+    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+      echo "land-lock: taking over from $(holder): its process $pid is gone" >&2
+      rm -rf "$lock" # ponytail: two takers can race here too, as below
+      continue
+    fi
     if [ -n "$(find "$lock" -maxdepth 0 -mmin "+${LAND_LOCK_STALE:-90}" 2>/dev/null)" ]; then
       echo "land-lock: taking over a stale lock from $(holder)" >&2
       rm -rf "$lock" # ponytail: two takers of one stale lock can race; the gate's behind check still holds
       continue
     fi
-    echo "land-lock: $(holder) is landing${area:+ in $area}; waiting" >&2
+    echo "land-lock: $(holder) is landing${area:+ in $area} (process ${pid:-not recorded}${pid:+, alive}); waiting" >&2
     sleep "${LAND_LOCK_POLL:-30}"
   done
   echo "$me" >"$lock/branch"
+  rm -f "$lock/pid"
+  [ -z "${LAND_LOCK_PID:-}" ] || echo "$LAND_LOCK_PID" >"$lock/pid"
 }
 drop() {
   [ -d "$lock" ] || return 0

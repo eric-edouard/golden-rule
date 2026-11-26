@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { carries, commands, isData } from "./gate";
-import { touched } from "./pr-status";
+import { owned, touched } from "./pr-status";
 
 // The gate on throwaway repos: an origin whose default branch is main, a clone on main and one on a feature branch.
 // Run: bun test ~/.agents/skills/work-on-code/gate.test.ts
@@ -365,4 +365,10 @@ test("land.ts lands only from the PR's branch, and asks for a base round when th
   sh(base2, "sed -i.bak 9s/9/nine/ shared.ts && rm shared.ts.bak && git add shared.ts");
   c(base2, "commit -q -m again && git push -q --no-verify origin main");
   expect(land(dir, { LAND_BASE_CHECKED: head }).exitCode).toBe(3); // the base moved again: asked again
+});
+
+test("statuses post only on repos the prefix owns, never a client's", () => {
+  expect(owned("mad", "MAD-repos/trocknerheld")).toBe(true);
+  expect(owned("mad", "trocknerheld-gmbh/trocknerheld-webseite")).toBe(false);
+  expect(owned("other", "MAD-repos/hub")).toBe(false);
 });

@@ -58,6 +58,7 @@ the PR as commit statuses. It is a Claude Code `PostToolUse` hook (matcher `Bash
 `gh api -X PATCH …/pulls/<n>` fallback) of the folder's own repo, it posts on the PR's head. A PR named by number
 or URL is shown when it belongs to the folder's repo (another repo's is skipped); the branch's PR only when the
 checkout's HEAD is its head. Tag-only, deleting and dry-run pushes are ignored.
+Statuses go only on repos the prefix owns (`mad`: `MAD-repos`): a client's own repo is theirs, even with a MAD checkout.
 
 - `<prefix>/debt-verdict`: the gate's rule on the verdict at that moment (`verdictOf`, the same code `gh pr merge` is
   checked with): success with the verdict and net lines; pending without a verdict for the head, or behind the base;

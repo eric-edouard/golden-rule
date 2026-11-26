@@ -59,8 +59,9 @@ the last step mostly confirms.
   main session reads the diff, runs the tests and commits. A failed launch falls back like any pick.
 - Before the plan or the first delegation, whichever comes first, the main session checks each CLI the picks name is set
   up, then asks its questions at once, in its harness's question tool (Claude: `AskUserQuestion`), one question each,
-  and the answers hold for the session: normal, fast or ultrafast mode (below); the picks' other CLI or not; and each
-  optional pick or not, by its name. Set up: `command -v` finds it, and for `codex`, `codex login status` says logged
+  and the answers hold for the session: normal, fast or ultrafast mode (below); the picks' other CLI or not; each
+  optional pick or not, by its name; and in Claude, compacting at 300k tokens or not (yes: set `autoCompactWindow`
+  to `300000` in the repo's `.claude/settings.local.json`, which the running session reloads). Set up: `command -v` finds it, and for `codex`, `codex login status` says logged
   in; for `pi`, `[ -n "$(<key command>)" ]` (never print the key) and `pi --list-models <model id>` lists that exact id.
   A CLI not set up gets no question and its picks are ignored; say so in one line. The user naming an optional pick
   later ("deepseek") turns it on. A delegate keeps the session's answers from its brief; no one to ask (loop, headless,

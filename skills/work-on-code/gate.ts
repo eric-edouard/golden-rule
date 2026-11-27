@@ -4,7 +4,7 @@
 // stdin and refuses (exit 2, the reason on stderr) a plan with no debt plan section, a merge whose PR carries no
 // passing debt verdict of its current head, and a push of code to a repository's default branch (a data-only
 // push, a job's report or log, goes through). Every other call passes untouched. The proof trusts its publisher. Anyone with that token can script a status.
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 /** A command's output, or null when it fails or cannot start (e.g. a folder an earlier part of the command creates). */
 export const run = (cwd: string, cmd: string[]) => {
@@ -493,6 +493,28 @@ export function gitCall(w: string[], cwd: string) {
   return { dir, args: w.slice(i) };
 }
 
+/** A branch merges its base only at landing (land.ts) or on a real conflict: each early merge costs a full check. */
+function checkBaseMerge(dir: string, args: string[]) {
+  // Words that are not options or option values (`-m <msg>`, `-s <strategy>`…), so a message never reads as a target.
+  const words = args.filter((a, i) => !a.startsWith("-") && !/^-[mFsX]$|^--(message|file|strategy|strategy-option)$/.test(args[i - 1] ?? ""));
+  const [sub, ...rest] = words;
+  const bases = defaults(dir);
+  const base = bases.find((b) => (sub === "merge" ? rest.includes(`origin/${b}`) : rest[0] === "origin" && rest[1] === b));
+  const branch = run(dir, ["git", "branch", "--show-current"]);
+  // A branch holding this repo's landing lock is landing: the one time it merges its base.
+  if (!base || !branch || bases.includes(branch) ||
+      Bun.spawnSync(["sh", join(import.meta.dir, "land-lock.sh"), "holds"], { cwd: dir }).exitCode === 0) {
+    return;
+  }
+  if (sub === "pull") { // checking it would mean fetching for a command that may be refused
+    deny(`fetch, then \`git merge origin/${base}\` only on a real conflict: land.ts merges it once at landing.`);
+  }
+  // merge-tree exits 1 on a conflict, 0 on a clean merge; anything else (an old git) lets the merge through.
+  if (Bun.spawnSync(["git", "merge-tree", "--write-tree", "HEAD", `origin/${base}`], { cwd: dir }).exitCode === 0) {
+    deny(`origin/${base} merges into this branch without a conflict: land.ts merges it once at landing. Merge it now only on a real conflict.`);
+  }
+}
+
 function check(script: string, from: string, split = commands(script)) {
   for (const { w, cwd, stdin } of walk(script, from, split)) {
     const [cmd, ...args] = w;
@@ -501,6 +523,8 @@ function check(script: string, from: string, split = commands(script)) {
     const git = gitCall(w, cwd);
     if (git?.args[0] === "push") {
       checkPush(git.dir, git.args.slice(1));
+    } else if (git?.args[0] === "merge" || git?.args[0] === "pull") {
+      checkBaseMerge(git.dir, git.args);
     } else if (cmd === "gh") {
       const p = args.indexOf("pr");
       const before = args.slice(0, Math.max(p, 0));

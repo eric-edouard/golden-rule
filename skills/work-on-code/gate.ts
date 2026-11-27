@@ -324,30 +324,36 @@ export function proofOf(dir: string, pr: Pr) {
   function* candidates() {
     for (let sha: string | undefined = pr.headRefOid, steps = 0; sha && steps < MAX_WALK; sha = parent.get(sha), steps++) yield sha;
   }
+  type Review = { reviewed: string; verdict: string; model: string; effort: string; baseRef: string; baseSha: string; state: string; confirm: boolean };
+  let nearestConfirm: Review | undefined;
   for (const reviewed of candidates()) {
     const pages: Status[][] = JSON.parse(api(`commits/${reviewed}/statuses?per_page=100`, "--paginate", "--slurp"));
     const status = pages.flat().filter(s => s.context === "debt-verdict" && publishers.includes(s.creator.login))
       .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id)[0];
     if (!status) continue;
-    const fields = /^(.*?) \| (\S+) (\S+) \| (.+)@([0-9a-f]{40})$/.exec(status.description);
+    const fields = /^(confirm )?(.*?) \| (\S+) (\S+) \| (.+)@([0-9a-f]{40})$/.exec(status.description);
     if (!fields) throw new Error("malformed debt-verdict status");
-    const [, verdict = "", model = "", effort = "", baseRef, baseSha] = fields;
+    const [, confirm, verdict = "", model = "", effort = "", baseRef = "", baseSha = ""] = fields;
     if (!VERDICTS.includes(verdict) || !EFFORTS.includes(effort)) throw new Error("unknown verdict or effort");
-    return { reviewed, verdict, model, effort, baseRef, baseSha, policy, state: status.state };
+    const review = { reviewed, verdict, model, effort, baseRef, baseSha, state: status.state, confirm: !!confirm };
+    // A confirm review saw only the fixes since the nearest full review behind it: both make the proof.
+    if (!nearestConfirm && review.confirm) nearestConfirm = review;
+    else if (!review.confirm) return { ...(nearestConfirm ?? review), policy, full: review };
   }
-  throw new Error(`${pr.url} has no trusted debt-verdict status. Run review.ts on its pushed head.`);
+  throw new Error(`${pr.url} has no trusted full debt-verdict status${nearestConfirm ? " behind its confirm" : ""}. Run review.ts on its pushed head.`);
 }
 
 export function verdictOf(dir: string, pr: Pr, local: boolean, proof = proofOf(dir, pr)) {
   if (!proof) return { state: "success", why: "docs and data only" };
-  const { reviewed, verdict, policy, model, effort } = proof;
+  const { reviewed, verdict, policy, full } = proof;
   if (proof.state !== "success" || verdict === "rework needed") return { state: "failure", why: "the latest review did not pass" };
-  if (proof.baseRef !== pr.baseRefName) return { state: "pending", why: "the PR was retargeted; run review.ts again" };
-  if (policy && (!policy.models.includes(model) || EFFORTS.indexOf(effort) < EFFORTS.indexOf(policy.effort))) {
+  if (proof.baseRef !== pr.baseRefName || full.baseRef !== pr.baseRefName) return { state: "pending", why: "the PR was retargeted; run review.ts again" };
+  // The policy binds the full review; a confirm after it may run on any model (gate.md).
+  if (policy && (!policy.models.includes(full.model) || EFFORTS.indexOf(full.effort) < EFFORTS.indexOf(policy.effort))) {
     return { state: "failure", why: "reviewer model or effort does not meet the base policy" };
   }
-  if (policy && reviewed !== pr.headRefOid && !(local && carries(dir, reviewed, pr.headRefOid, pr.baseRefOid))) {
-    return { state: "pending", why: `the debt verdict is for ${reviewed}; run review.ts on the new head` };
+  if (reviewed !== pr.headRefOid && !(local && carries(dir, reviewed, pr.headRefOid, pr.baseRefOid))) {
+    return { state: "pending", why: `the debt verdict is for ${reviewed}; run review.ts (confirm, for a small fix) on the new head` };
   }
   const behind = run(dir, ["gh", "api", `repos/${repoOf(pr)}/compare/${pr.baseRefOid}...${pr.headRefOid}`, "-q", ".behind_by"]);
   if (behind !== "0") return { state: "pending", why: `cannot confirm the head is up to date with ${pr.baseRefName}; run land.ts` };

@@ -1,15 +1,21 @@
 #!/usr/bin/env bun
-// Run a full review from the pushed checkout. Only the wrapper writes the verdict status.
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+// Run a review from the pushed checkout. Only the wrapper writes the verdict status.
+// Full: the PR's whole diff. Confirm: only the fixes since the nearest full review, when they are small (gate.md).
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { CODEX_ENV_FLAGS, EFFORTS, type Pr, repoOf, reportVerdict, run } from "./gate";
+import { join, resolve } from "node:path";
+import { CODEX_ENV_FLAGS, EFFORTS, type Pr, proofOf, repoOf, reportVerdict, run } from "./gate";
+
+/** The most lines (added plus deleted) a confirm review may judge; a binary change is over it. */
+const CONFIRM_MAX = 60;
 
 async function review() {
-  const [checkout, number, cli, model, effort, ...extra] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const confirm = args[2] === "confirm";
+  const [checkout, number, cli, model, effort, ...extra] = confirm ? [...args.slice(0, 2), ...args.slice(3)] : args;
   if (!checkout || !/^\d+$/.test(number ?? "") || !["codex", "claude"].includes(cli ?? "") ||
       !model || !/^[\w][\w./:[\]-]*$/.test(model) || (effort !== undefined && !EFFORTS.includes(effort)) || extra.length) {
-    throw new Error("usage: bun review.ts <checkout> <pr> <codex|claude> <model> [effort], started outside the checkout");
+    throw new Error("usage: bun review.ts <checkout> <pr> [confirm] <codex|claude> <model> [effort], started outside the checkout");
   }
   const dir = run(checkout, ["git", "rev-parse", "--show-toplevel"]);
   if (!dir) throw new Error("review needs a git checkout");
@@ -19,7 +25,7 @@ async function review() {
   const view = () => {
     const raw = run(dir, ["gh", "pr", "view", number!, "--json", "url,headRefOid,baseRefOid,baseRefName,body"]);
     if (!raw) throw new Error("cannot read the PR");
-    return JSON.parse(raw) as Pick<Pr, "url" | "headRefOid" | "baseRefName" | "baseRefOid"> & { body: string };
+    return JSON.parse(raw) as Pr & { body: string };
   };
   const pr = view();
   const checkHead = () => {
@@ -31,13 +37,9 @@ async function review() {
   // The reviewer sees the diff from the merge base: record that as the reviewed base, so landing checks everything after it.
   const mergeBase = run(dir, ["git", "merge-base", pr.baseRefOid, pr.headRefOid]);
   if (!mergeBase) throw new Error("cannot find the merge base; fetch the base before reviewing");
-  const range = `${mergeBase}..${pr.headRefOid}`;
-  const diff = run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", range]);
-  if (diff === null) throw new Error(`cannot read ${range}; fetch the base before reviewing`);
-  const plan = pr.body?.split(/^## Debt plan[ \t]*\r?$/m)[1]?.split(/^## /m)[0]?.trim() || "(no plan)";
-  const instructions = await Bun.file(join(import.meta.dir, "verdict-review.md")).text();
-  const architecture = await Bun.file(join(import.meta.dir, "architecture.md")).text();
-  const prompt = `${instructions}\n\n${architecture}\n\nDebt plan:\n${plan}\n\nPinned diff ${range}:\n${diff}`;
+  // Each full report is kept beside the repo's objects (shared by its worktrees), for a confirm review to read.
+  const reports = join(resolve(dir, run(dir, ["git", "rev-parse", "--git-common-dir"]) ?? ".git"), "work-on-code");
+  const prompt = confirm ? await confirmPrompt(dir, pr, mergeBase, reports) : await fullPrompt(dir, pr, mergeBase);
   const temp = mkdtempSync(join(tmpdir(), "debt-review-"));
   try {
     const effortFile = join(temp, "effort");
@@ -79,15 +81,54 @@ async function review() {
     if (pr.headRefOid !== after.headRefOid || pr.baseRefName !== after.baseRefName || pr.baseRefOid !== after.baseRefOid) {
       throw new Error("PR head or base moved during review; rerun review.ts");
     }
-    const description = `${verdict} | ${usedModel} ${usedEffort} | ${pr.baseRefName}@${mergeBase}`;
+    const description = `${confirm ? "confirm " : ""}${verdict} | ${usedModel} ${usedEffort} | ${pr.baseRefName}@${mergeBase}`;
     if (description.length > 140) throw new Error("debt-verdict status is over GitHub's 140 characters (base branch name too long)");
     const state = verdict === "rework needed" ? "failure" : "success";
     if (run(dir, ["gh", "api", `repos/${repoOf(pr)}/statuses/${pr.headRefOid}`, "-f", "context=debt-verdict",
       "-f", `state=${state}`, "-f", `description=${description}`]) === null) throw new Error("could not post debt-verdict status");
+    // Kept only once posted, so the report a confirm reads is the one the gate trusts.
+    if (!confirm) {
+      mkdirSync(reports, { recursive: true });
+      await Bun.write(join(reports, `${pr.headRefOid}.md`), report);
+    }
     if (state === "failure") process.exitCode = 1;
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
+}
+
+async function fullPrompt(dir: string, pr: Pr & { body: string }, mergeBase: string) {
+  const range = `${mergeBase}..${pr.headRefOid}`;
+  const diff = run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", range]);
+  if (diff === null) throw new Error(`cannot read ${range}; fetch the base before reviewing`);
+  const plan = pr.body?.split(/^## Debt plan[ \t]*\r?$/m)[1]?.split(/^## /m)[0]?.trim() || "(no plan)";
+  const instructions = await Bun.file(join(import.meta.dir, "verdict-review.md")).text();
+  const architecture = await Bun.file(join(import.meta.dir, "architecture.md")).text();
+  return `${instructions}\n\n${architecture}\n\nDebt plan:\n${plan}\n\nPinned diff ${range}:\n${diff}`;
+}
+
+/** The fixes since the nearest full review, from that review merged with the base the head holds (so a base merge is not shown as the PR's). */
+async function confirmPrompt(dir: string, pr: Pr, mergeBase: string, reports: string) {
+  const proof = proofOf(dir, pr);
+  if (!proof) throw new Error("a docs-and-data PR needs no review");
+  if (proof.confirm && proof.state !== "success") throw new Error("the last confirm did not pass; run a full review");
+  const fullSha = proof.full.reviewed;
+  const report = Bun.file(join(reports, `${fullSha}.md`));
+  if (!(await report.exists())) throw new Error(`the full review of ${fullSha} is not on this machine; run a full review`);
+  const from = run(dir, ["git", "merge-tree", "--write-tree", fullSha, mergeBase])?.split("\n")[0];
+  if (!from) throw new Error(`cannot merge ${fullSha} with the base; run a full review`);
+  const numstat = run(dir, ["git", "diff", "--numstat", "--no-renames", from, pr.headRefOid]);
+  if (numstat === null) throw new Error(`cannot read the fixes since ${fullSha}`);
+  const lines = numstat.split("\n").filter(Boolean).reduce((n, l) => {
+    const [a = "-", d = "-"] = l.split("\t");
+    return n + (a === "-" || d === "-" ? Number.POSITIVE_INFINITY : Number(a) + Number(d));
+  }, 0);
+  if (lines === 0) throw new Error(`no fixes since ${fullSha}; run a full review`);
+  if (lines > CONFIRM_MAX) throw new Error(`the fixes since ${fullSha} change ${lines} lines, over ${CONFIRM_MAX}; run a full review`);
+  const diff = run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", from, pr.headRefOid]);
+  if (diff === null) throw new Error(`cannot read the fixes since ${fullSha}`);
+  const instructions = await Bun.file(join(import.meta.dir, "verdict-confirm.md")).text();
+  return `${instructions}\n\nEarlier full review of ${fullSha}:\n${await report.text()}\n\nFixes since then:\n${diff}`;
 }
 
 review().catch(e => { console.error(`review: ${e.message}`); process.exitCode = 1; });

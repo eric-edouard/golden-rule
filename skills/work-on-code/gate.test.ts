@@ -375,6 +375,7 @@ case "$1 $2" in
   *git/trees/*) echo "$TREE";;
   *contents/.work-on-code.json*) [ -n "$POLICY" ] && echo "$POLICY";;
   *commits/"$REVIEWED"/statuses*) echo "$STATUSES";;
+  *commits/"$FULL"/statuses*) echo "$FULL_STATUSES";;
   *commits/*/statuses*) echo "$OTHER_STATUSES";;
   *compare/*per_page*) remote "$COMPARE";;
   *compare/*) echo "$BEHIND";;
@@ -425,9 +426,19 @@ test("only the nearest trusted verdict authorizes its pinned head", () => {
   expect(merge(docs, pinned, [{ filename: "docs/old.md", previous_filename: "tool.ts" }])).toBe(2); // script renamed into docs
   expect(merge(docs, pinned, [{ filename: "skills/x/verdict-review.md" }])).toBe(2); // reviewer prompts are instructions
   expect(merge(docs, "gh pr merge 7", readme)).toBe(2);
-  expect(merge({ REVIEWED: ancestor })).toBe(0);
-  expect(merge({ REVIEWED: ancestor, OTHER_STATUSES: JSON.stringify([[failed]]) })).toBe(2);
+  // A verdict of an older commit holds for no head, policy or not: the fixes after it need a confirm review.
+  expect(merge({ REVIEWED: ancestor })).toBe(2);
   expect(merge({ ...strict, REVIEWED: ancestor })).toBe(2);
+  // A confirm on the head stands on the nearest full review behind it, which alone must meet the policy.
+  const confirmed = { ...status, description: `confirm no debt added | claude-haiku low | main@${baseSha}`, id: 3 };
+  const full = (s: object) => ({ STATUSES: JSON.stringify([[confirmed]]), OTHER_STATUSES: JSON.stringify([[s]]) });
+  expect(merge({ ...strict, ...full(status) })).toBe(0);
+  expect(merge({ ...strict, ...full(failed) })).toBe(0); // the confirm says its Blocking items are fixed
+  expect(merge({ ...strict, ...full(confirmed) })).toBe(2); // confirms only, no full review
+  expect(merge({ ...strict, ...full({ ...status, description: status.description.replace("medium", "low") }) })).toBe(2);
+  expect(merge({ ...strict, ...full({ ...status, description: status.description.replace("main@", "other@") }) })).toBe(2);
+  expect(merge({ ...strict, ...full(status), STATUSES: JSON.stringify([[{ ...confirmed, state: "failure", description: confirmed.description.replace("no debt added", "rework needed") }]]) })).toBe(2);
+  expect(merge({ ...strict, ...full(status), STATUSES: JSON.stringify([[{ ...confirmed, description: `confirm ${confirmed.description}` }]]) })).toBe(2);
   // Only first parents count, and only MAX_WALK of them: the hook must stay inside its timeout.
   const side = "d".repeat(40);
   const merged = [{ sha: headSha, parents: [{ sha: ancestor }, { sha: side }] }, { sha: ancestor, parents: [] }, { sha: side, parents: [] }];
@@ -446,8 +457,10 @@ test("review.ts posts a full report's verdict on the pushed commit only", () => 
   const posted = join(root, "posted");
   const report = join(root, "report");
   const args = join(root, "review-args");
+  const prompt = join(root, "review-prompt");
   writeFileSync(join(bin, "codex"), `#!/bin/sh
 printf '%s\\n' "$@" > "${args}"
+cat > "${prompt}"
 echo 'model: gpt-review' >&2
 echo 'reasoning effort: high' >&2
 cat "${report}"
@@ -487,6 +500,47 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   writeFileSync(join(dir, "dirty"), "unreviewed");
   expect(review().exitCode).not.toBe(0);
   expect(existsSync(posted)).toBe(false);
+  unlinkSync(join(dir, "dirty"));
+  // Confirm: the small fixes since the nearest full review, judged with that review's saved report.
+  expect(review().exitCode).toBe(0);
+  const commit = (cmd: string) => { sh(dir, `${cmd} && git add shared.ts && git -c user.name=t -c user.email=t@t commit -qm fix`); return sha("HEAD"); };
+  const confirm = (pushed: string, ...parents: string[]) => Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "confirm", "codex", "gpt-mini"], {
+    cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: pushed }), POSTED: posted,
+      REVIEWED: head, COMPARE: JSON.stringify({ commits: chain(pushed, ...parents, head), files: [{ filename: "shared.ts" }] }) }),
+  });
+  const saved = join(dir, ".git", "work-on-code", `${head}.md`);
+  writeFileSync(report, "Verdict: no debt added\nunposted");
+  expect(Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "codex", "gpt-review"], {
+    cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: head }), POSTED: join(root, "none", "x") }),
+  }).exitCode).not.toBe(0); // the post fails: the saved report stays the posted one
+  expect(readFileSync(saved, "utf8")).toBe("Verdict: debt reduced");
+  unlinkSync(posted);
+  const fix = commit("echo fix >> shared.ts");
+  writeFileSync(report, "Verdict: no debt added");
+  expect(confirm(fix).exitCode).toBe(0);
+  expect(readFileSync(posted, "utf8")).toContain(`statuses/${fix}`);
+  expect(readFileSync(posted, "utf8")).toContain(`confirm no debt added | gpt-review high | main@${base}`);
+  expect(readFileSync(prompt, "utf8")).toContain("Confirming fixes");
+  expect(readFileSync(prompt, "utf8")).toContain("Verdict: debt reduced"); // the full review's report
+  expect(readFileSync(prompt, "utf8")).toContain("+fix");
+  expect(readFileSync(prompt, "utf8")).not.toContain("+review"); // the reviewed change is not shown again
+  unlinkSync(posted);
+  const failedConfirm = { ...status, state: "failure", description: `confirm rework needed | gpt-review high | main@${base}` };
+  expect(Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "confirm", "codex", "gpt-mini"], {
+    cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: fix }), POSTED: posted, REVIEWED: fix,
+      STATUSES: JSON.stringify([[failedConfirm]]), FULL: head, FULL_STATUSES: JSON.stringify([[status]]),
+      COMPARE: JSON.stringify({ commits: chain(fix, head), files: [{ filename: "shared.ts" }] }) }),
+  }).stderr.toString()).toContain("the last confirm did not pass"); // after a failing confirm, only a full review
+  expect(existsSync(posted)).toBe(false);
+  const big = commit("seq 1 100 >> shared.ts");
+  expect(confirm(big, fix).exitCode).not.toBe(0); // over the cap: a full review
+  expect(existsSync(posted)).toBe(false);
+  sh(dir, `git reset -q --hard ${fix} && rm -r .git/work-on-code`);
+  expect(confirm(fix).exitCode).not.toBe(0); // no saved report of the full review
+  expect(existsSync(posted)).toBe(false);
+  sh(dir, `git reset -q --hard ${head} && mkdir .git/work-on-code && echo 'Verdict: debt reduced' > .git/work-on-code/${head}.md`);
+  expect(confirm(head).stderr.toString()).toContain("no fixes since"); // nothing to confirm
+  expect(existsSync(posted)).toBe(false);
 }, 30_000);
 
 test("land.ts lands only from the PR's branch, and asks for a base round when the base changed the PR's files", () => {
@@ -501,20 +555,23 @@ test("land.ts lands only from the PR's branch, and asks for a base round when th
   const dir = join(root, "landing");
   sh(dir, "sed -i.bak 1s/1/one/ shared.ts && rm shared.ts.bak && git add shared.ts");
   c(dir, "commit -q -m pr && git push -q origin pr");
-  const reviewed = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: dir }).stdout.toString().trim();
+  const rev = () => Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: dir }).stdout.toString().trim();
+  const reviewed = rev();
   const oldBase = Bun.spawnSync(["git", "rev-parse", "origin/main"], { cwd: dir }).stdout.toString().trim();
+  sh(dir, "sed -i.bak 1s/one/first/ shared.ts && rm shared.ts.bak && git add shared.ts");
+  c(dir, "commit -q -m mechanical && git push -q origin pr");
+  const fixed = rev();
+  const full = { ...status, description: status.description.replace(baseSha, oldBase) };
   const env = fakeGh({
-    REMOTE: join(root, "origin.git"), REVIEWED: reviewed,
-    STATUSES: JSON.stringify([[{ ...status, description: status.description.replace(baseSha, oldBase) }]]),
+    REMOTE: join(root, "origin.git"), REVIEWED: fixed, FULL: reviewed, FULL_STATUSES: JSON.stringify([[full]]),
+    STATUSES: JSON.stringify([[{ ...full, description: `confirm ${full.description}` }]]),
     PR_VIEW: JSON.stringify({ ...prView, headRefOid: "REMOTE_HEAD", baseRefOid: "REMOTE_BASE" }),
-    COMPARE: JSON.stringify({ commits: chain("REMOTE_HEAD", reviewed), files: [{ filename: "shared.ts" }] }),
+    COMPARE: JSON.stringify({ commits: chain("REMOTE_HEAD", fixed, reviewed), files: [{ filename: "shared.ts" }] }),
   });
   const land = (cwd: string, extra: Record<string, string> = {}) =>
     Bun.spawnSync(["bun", LAND, "7"], { cwd, env: { ...env, ...extra } });
   expect(land(FEATURE).exitCode).toBe(1); // another branch's checkout
-  sh(dir, "sed -i.bak 1s/one/first/ shared.ts && rm shared.ts.bak && git add shared.ts");
-  c(dir, "commit -q -m mechanical && git push -q origin pr");
-  expect(land(dir).exitCode).toBe(0); // a fix on the PR alone needs no base round
+  expect(land(dir).exitCode).toBe(0); // a confirmed fix lands, with no base round when the base left the PR's files alone
   sh(base2, "sed -i.bak 10s/10/ten/ shared.ts && rm shared.ts.bak && git add shared.ts");
   c(base2, "commit -q -m far && git push -q --no-verify origin main");
   const first = land(dir);
@@ -526,4 +583,8 @@ test("land.ts lands only from the PR's branch, and asks for a base round when th
   sh(base2, "sed -i.bak 9s/9/nine/ shared.ts && rm shared.ts.bak && git add shared.ts");
   c(base2, "commit -q -m again && git push -q --no-verify origin main");
   expect(land(dir, { LAND_BASE_CHECKED: base }).exitCode).toBe(3); // the base moved again: asked again
+  // A confirm naming a newer base never skips the base round from the full review's base.
+  const latest = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: base2 }).stdout.toString().trim();
+  const newer = JSON.stringify([[{ ...full, description: `confirm ${full.description.replace(oldBase, latest)}` }]]);
+  expect(land(dir, { STATUSES: newer, REVIEWED: rev() }).exitCode).toBe(3);
 }, 30_000);

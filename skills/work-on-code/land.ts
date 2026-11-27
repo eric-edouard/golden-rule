@@ -62,9 +62,11 @@ const { state, why } = verdictOf(dir, pushed, true, proof);
 if (state !== "success") {
   fail(why);
 }
-if (proof && proof.baseSha !== pushed.baseRefOid && process.env.LAND_BASE_CHECKED !== pushed.baseRefOid) {
-  const range = `${proof.baseSha}..${pushed.baseRefOid}`;
-  const files = run(dir, ["git", "diff", "--name-only", "--no-renames", `${proof.baseSha}...${head}`])?.split("\n").filter(Boolean);
+// From the full review's base: a confirm never saw what a base merge brought in.
+const reviewedBase = proof?.full.baseSha;
+if (reviewedBase && reviewedBase !== pushed.baseRefOid && process.env.LAND_BASE_CHECKED !== pushed.baseRefOid) {
+  const range = `${reviewedBase}..${pushed.baseRefOid}`;
+  const files = run(dir, ["git", "diff", "--name-only", "--no-renames", `${reviewedBase}...${head}`])?.split("\n").filter(Boolean);
   if (!files) fail("cannot list the PR files for the base round");
   const moved = run(dir, ["git", "diff", "--name-only", range, "--", ...files]);
   if (moved === null) fail(`cannot read the base diff ${range}`);

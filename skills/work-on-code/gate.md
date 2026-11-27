@@ -55,7 +55,8 @@ tool hook (it happens on GitHub, where no git hook runs).
 
 `review.ts` pins the base and head, runs a fresh read-only review and posts the status on the reviewed commit.
 The description records `<verdict> | <model> <effort> | <base ref>@<base sha>`. Retargeting needs a new run.
-Starting at the head, the gate takes the nearest PR commit with a trusted status. Its newest trusted status
+Starting at the head, the gate takes the nearest PR commit with a trusted status (a confirm's, paired with the
+nearest full one behind it, below). Its newest trusted status
 wins (highest id on a tie). A failed rerun blocks the merge. The PR description is the report for people.
 
 Set a policy in `.work-on-code.json` at the repo root, for example:
@@ -66,8 +67,16 @@ Set a policy in `.work-on-code.json` at the repo root, for example:
 
 The gate reads the base branch's policy on GitHub. An unreadable policy blocks the merge.
 It requires an exact listed model and at least the stated effort. Publishers default to the login running the gate.
-With a policy, the reviewed sha must be the head or carry across a clean base merge with the same tree and all
-base hunks more than 3 lines from the PR's hunks. Without a policy, list mechanical fixes since review in the PR.
+The reviewed sha must be the head or carry across a clean base merge with the same tree and all
+base hunks more than 3 lines from the PR's hunks.
+
+`review.ts <checkout> <pr> confirm …` reviews only the fixes since the nearest full review (`git diff` from that
+review merged with the head's base, under a line cap, a binary file over it), with `verdict-confirm.md` and the full
+review's report, which a full run keeps in `<git common dir>/work-on-code/<sha>.md`. Its status reads
+`confirm <verdict> | …`, and the gate pairs it with the nearest full status behind it: the policy's model and effort
+bind that full review, never the confirm (its few lines are judged by any model), both must name the PR's base, and
+`land.ts`'s base round starts from the full review's base. After a failing confirm, only a full review passes.
+The cap, the saved report and that last rule are checked by `review.ts` alone, like everything else the publisher posts.
 The proof trusts the publisher. Anyone with its token, including a PR author who holds it, can script a status.
 
 ## The check on the PR (`pr-status.ts`)

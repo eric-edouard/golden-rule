@@ -328,7 +328,7 @@ export function proofOf(dir: string, pr: Pr) {
   function* candidates() {
     for (let sha: string | undefined = pr.headRefOid, steps = 0; sha && steps < MAX_WALK; sha = parent.get(sha), steps++) yield sha;
   }
-  type Review = { reviewed: string; verdict: string; model: string; effort: string; baseRef: string; baseSha: string; state: string; confirm: boolean };
+  type Review = { reviewed: string; verdict: string; model: string; effort: string; baseRef: string; baseSha: string; state: string; confirm: boolean; landed: boolean };
   let nearestConfirm: Review | undefined;
   let confirms = 0;
   for (const reviewed of candidates()) {
@@ -336,13 +336,14 @@ export function proofOf(dir: string, pr: Pr) {
     const trusted = pages.flat().filter(s => s.context === "debt-verdict" && publishers.includes(s.creator.login));
     const status = trusted.sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id)[0];
     if (!status) continue;
-    const fields = /^(confirm )?(.*?) \| (\S+) (\S+) \| (.+)@([0-9a-f]{40})$/.exec(status.description);
+    const fields = /^(confirm |land )?(.*?) \| (\S+) (\S+) \| (.+)@([0-9a-f]{40})$/.exec(status.description);
     if (!fields) throw new Error("malformed debt-verdict status");
-    const [, confirm, verdict = "", model = "", effort = "", baseRef = "", baseSha = ""] = fields;
+    const [, kind, verdict = "", model = "", effort = "", baseRef = "", baseSha = ""] = fields;
     if (!VERDICTS.includes(verdict) || !EFFORTS.includes(effort)) throw new Error("unknown verdict or effort");
-    const review = { reviewed, verdict, model, effort, baseRef, baseSha, state: status.state, confirm: !!confirm };
-    // A confirm review saw only the fixes since the nearest full review behind it: both make the proof.
-    // A confirm below the policy proves nothing and uses no round: it is skipped.
+    const review = { reviewed, verdict, model, effort, baseRef, baseSha, state: status.state, confirm: !!kind, landed: kind === "land " };
+    // A confirm (or a land review of a conflict resolution) saw only what changed since the nearest full review behind
+    // it: both make the proof. Below the policy it proves nothing and uses no round: it is skipped. A land review never
+    // uses a round (only "confirm " statuses are counted).
     if (review.confirm) {
       if (!meets(policy, review)) continue;
       nearestConfirm ??= review;

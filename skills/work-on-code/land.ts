@@ -47,7 +47,7 @@ process.on("uncaughtException", (e) => fail(String(e)));
 const base = before.baseRefName;
 if (!(shown(["git", "fetch", "-q", "origin", base]) && shown(["git", "merge", "-q", "--no-edit", `origin/${base}`]))) {
   run(dir, ["git", "merge", "--abort"]);
-  fail(`conflict with ${base}: resolve it, then a full verdict round`);
+  fail(`conflict with ${base}: merge it by hand, commit and push, then review.ts <checkout> ${pr} land <cli> <model> <effort> (a full review only when it says Base: touches), then land.ts again`);
 }
 const head = run(dir, ["git", "rev-parse", "HEAD"]) as string;
 if (!shown(["git", "push", "-q", "origin", "HEAD"])) {
@@ -62,8 +62,8 @@ const { state, why } = verdictOf(dir, pushed, true, proof);
 if (state !== "success") {
   fail(why);
 }
-// From the full review's base: a confirm never saw what a base merge brought in.
-const reviewedBase = proof?.full.baseSha;
+// From the full review's base: a confirm never saw what a base merge brought in (a land review did).
+const reviewedBase = proof && (proof.landed ? proof.baseSha : proof.full.baseSha);
 if (reviewedBase && reviewedBase !== pushed.baseRefOid && process.env.LAND_BASE_CHECKED !== pushed.baseRefOid) {
   const range = `${reviewedBase}..${pushed.baseRefOid}`;
   const files = run(dir, ["git", "diff", "--name-only", "--no-renames", `${reviewedBase}...${head}`])?.split("\n").filter(Boolean);

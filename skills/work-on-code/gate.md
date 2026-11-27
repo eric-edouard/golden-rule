@@ -77,7 +77,10 @@ review's report, which a full run keeps in `<git common dir>/work-on-code/<sha>.
 bind that full review and the confirm alike (a confirm judges fixes of any size), both must name the PR's base, and
 `land.ts`'s base round starts from the full review's base. At most two confirms follow a full review (three
 rounds per PR; a new full review restarts them); `review.ts` refuses a third. A confirm below the policy
-is skipped: it proves nothing and uses no round, and `review.ts` refuses to run one. That limit and the saved report are checked by `review.ts` alone, like everything else the publisher posts.
+is skipped: it proves nothing and uses no round, and `review.ts` refuses to run one.
+`review.ts … land` reviews a base merge resolved by hand (head against git's own merge of its two parents, plus
+the base changes under the PR's files); its `land <verdict>` status pairs with the full review like a confirm, uses
+no confirm round, and records the merged base, so `land.ts` asks no base round after it. That limit and the saved report are checked by `review.ts` alone, like everything else the publisher posts.
 The proof trusts the publisher. Anyone with its token, including a PR author who holds it, can script a status.
 
 ## The check on the PR (`pr-status.ts`)

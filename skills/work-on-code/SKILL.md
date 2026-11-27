@@ -106,8 +106,7 @@ slices each pay a push check, a verdict and a landing, and hide the shape.
 
 - Plan: one line under `## Debt plan`, and the bundles. No plan review, no watcher.
 - Verdict: run the full review one rank lower, at most medium effort, subject to the repo's reviewer policy.
-- Never fast: files on the repo's strict paths (its `AGENTS.md` names them), migrations, prompts, anything its
-  `AGENTS.md` says to ask first. Those keep the full workflow.
+- Never fast: what Bundles splits out; it keeps the full workflow.
 - The verdict block says `Mode: fast` and links one `debt` issue listing the PR's files.
 - Over 15 open `debt` issues in an area, fast mode is refused and the next PR there is a cleanup.
 
@@ -117,10 +116,10 @@ Everything of fast mode, and:
 - **Critical tests only:** a new test only for what is critical: money, a write to an outside account or to a
   customer, auth and trust boundaries, data that cannot be rebuilt (migrations, deletes). Everything else is checked
   by running it (the app, a script, one real call), never by a new test.
-- **Patch, file the rebuild:** a wrong shape is patched to work; when it needs a rebuild, file a `debt` issue with the
+- **Patch, file the rebuild** (the one exception to refusing patch-on-patch): a wrong shape is patched to work; when it needs a rebuild, file a `debt` issue with the
   rebuild's brief instead of doing it in the bundle. Existing tests must still pass.
 - **Verdict:** run the full review one rank lower at low effort, subject to the repo's reviewer policy.
-- Never ultrafast: fast mode's list. A bundle touching those parts splits them out to the full workflow. Hard-tier
+- Never ultrafast: what Bundles splits out. Hard-tier
   work (auth, payments, queues, trust boundaries) keeps its tier's verdict rank and effort: only bundles and the tests
   rule apply to it.
 - The verdict block says `Mode: ultrafast` and links one `debt` issue listing the PR's files and the areas left
@@ -157,9 +156,10 @@ Everything of fast mode, and:
   from the branch's commits and never rebuilds. Work from test passes: one PR per round, and a pass reported while that
   PR is open folds its fixes into it before the verdict.
 - **Thin orchestrator** (a session running several builders): it plans, launches and relays; it acts only when woken.
-  - Each open item of the plan's checklist names its dependencies (`needs: <item>`). Builders are light; the machine
-    is loaded by what they trigger (checks, app builds, simulators), which the repo's heavy-job slot limits. With
-    no such slot, the plan states a parallel cap (default 4 builders).
+  - Each open item of the plan's checklist names its dependencies (`needs: <item>`). In-session subagent builders
+    are light: what loads the machine is what they trigger (checks, app builds, simulators), which the repo's
+    heavy-job slot limits; with no such slot, the plan caps them (default 4). Builders launched as local CLI runs
+    (`codex exec`, `claude -p`, `pi`) cap at 4.
   - On every wake, before ending the turn, it launches each item whose dependencies are met, up to any cap.
   - In Claude, a session heartbeat (`CronCreate`, every ~10 minutes) wakes it for the same refill: a wake, not a
     status poll, so agents ending together never leave ready work idle. Delete it when the checklist is done.
@@ -190,8 +190,8 @@ Plan review: <passed | the findings and what changed>
 - **Check (hard tier only):** one fresh senior reviewer gets the plan's text and the repo path, nothing else, with `plan-review.md`.
   On a reshape, fix the plan and say what changed under `Plan review:`; a second review only when the shape changed.
 - When the PR opens, copy the section into its description: the watch and the verdict compare the code to it.
-- The plan starts with its bundles (each bundle's items, files and line estimate); a bundle over about 3,000 changed
-  lines splits by area or stacks. Ultrafast also marks each item critical (tested) or not (checked by running); the
+- The plan starts with its bundles (each bundle's items, files and line estimate); a bundle over the Bundles size
+  splits by area or stacks. Ultrafast also marks each item critical (tested) or not (checked by running); the
   design (`plan-design.md`) is told the mode.
 
 ## Watch (while coding)

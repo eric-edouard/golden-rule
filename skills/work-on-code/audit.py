@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Where the past days' coding time and tokens went, from Claude Code transcripts and review.ts's run log.
+# Partial: background commands and Codex transcripts are not timed.
 #   python3 -I audit.py [days=8] [project-substring]
 import glob, json, os, re, sys, time, statistics as st
 from collections import defaultdict
@@ -21,7 +22,7 @@ def ts(s):
 def mine(path):
     if os.path.getmtime(path) < CUT:
         return None
-    pending, tools, seen, tok, model = {}, [], set(), 0, None
+    pending, tools, seen, tok = {}, [], set(), {}
     for line in open(path, errors="ignore"):
         try:
             r = json.loads(line); T = ts(r["timestamp"])
@@ -33,8 +34,8 @@ def mine(path):
         if r.get("type") == "assistant":
             u = m.get("usage") or {}
             if m.get("id") not in seen and u:
-                seen.add(m.get("id")); model = m.get("model") or model
-                tok += sum(u.get(k) or 0 for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+                seen.add(m.get("id")); k = m.get("model")
+                tok[k] = tok.get(k, 0) + sum(u.get(k) or 0 for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
             for c in m.get("content") or []:
                 if isinstance(c, dict) and c.get("type") == "tool_use":
                     i = c.get("input") or {}
@@ -46,7 +47,7 @@ def mine(path):
                 p = isinstance(c, dict) and pending.pop(c.get("tool_use_id"), None)
                 if p:
                     tools.append((p[1], T - p[0]))
-    return dict(sub="/subagents/" in path, model=model, tok=tok, tools=tools)
+    return dict(sub="/subagents/" in path, tok=tok, tools=tools)
 
 if __name__ == "__main__":
     files = [p for p in glob.glob(os.path.expanduser("~/.claude/projects/*/**/*.jsonl"), recursive=True) if ONLY in p]
@@ -54,17 +55,23 @@ if __name__ == "__main__":
         S = [s for s in pool.imap_unordered(mine, files, chunksize=8) if s]
     tok = defaultdict(int); n = defaultdict(int); C = defaultdict(list)
     for s in S:
-        k = ("subagent " if s["sub"] else "main ") + str(s["model"]); tok[k] += s["tok"]; n[k] += 1
+        for model, t in s["tok"].items():
+            k = ("subagent " if s["sub"] else "main ") + str(model); tok[k] += t; n[k] += 1
         for c, d in s["tools"]:
             C[c].append(d)
     print(f"{len(S)} transcripts, last {DAYS:g} days{' in ' + ONLY if ONLY else ''}\n\ntokens read (input + cache):")
     for k, v in sorted(tok.items(), key=lambda a: -a[1])[:8]:
-        print(f"  {v / 1e9:6.2f}B  {n[k]:5d} runs  {k}")
+        print(f"  {v / 1e9:6.2f}B  {n[k]:5d} transcripts  {k}")
     print("\nforeground tool time:")
     for c, ds in sorted(C.items(), key=lambda a: -sum(a[1]))[:15]:
         print(f"  {sum(ds) / 3600:6.1f}h  n={len(ds):5d}  median {st.median(ds):4.0f}s  {c}")
     log = os.path.expanduser("~/.agents/work-on-code-runs.jsonl")
-    runs = [json.loads(l) for l in open(log)] if os.path.exists(log) else []
+    runs = []
+    for l in open(log) if os.path.exists(log) else []:
+        try:
+            runs.append(json.loads(l))
+        except ValueError:
+            pass  # a line still being appended
     runs = [r for r in runs if ts(r["at"]) >= CUT and ONLY in r["pr"]]
     for kind in ("full", "confirm"):
         ds = [r["seconds"] for r in runs if r["kind"] == kind]

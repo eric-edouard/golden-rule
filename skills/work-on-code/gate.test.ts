@@ -385,9 +385,10 @@ esac
 `, { mode: 0o755 });
 // The PR's commits as GitHub's compare gives them: head, then its first parents.
 const chain = (...shas: string[]) => shas.map((sha, i) => ({ sha, parents: shas[i + 1] ? [{ sha: shas[i + 1] }] : [] }));
+const home = mkdtempSync(join(root, "home-")); // review.ts logs its runs under HOME: never the real one
 function fakeGh(extra: Record<string, string> = {}, files: object[] = [{ filename: "shared.ts" }]) {
   return {
-    HOME: process.env.HOME, PATH: `${bin}:${process.env.PATH}`, TMPDIR: root, PR_VIEW: JSON.stringify(prView),
+    HOME: home, PATH: `${bin}:${process.env.PATH}`, TMPDIR: root, PR_VIEW: JSON.stringify(prView),
     REVIEWED: headSha, STATUSES: JSON.stringify([[status]]), OTHER_STATUSES: "[[]]", BEHIND: "0",
     TREE: '{"truncated":false,"tree":[]}', COMPARE: JSON.stringify({ commits: chain(headSha, ancestor), files }), ...extra,
   };

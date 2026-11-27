@@ -496,7 +496,7 @@ export function gitCall(w: string[], cwd: string) {
 function checkBaseMerge(dir: string, args: string[]) {
   const [sub, ...rest] = args.filter((a) => !a.startsWith("-"));
   const bases = defaults(dir);
-  const base = bases.find((b) => (sub === "merge" ? rest.includes(`origin/${b}`) : rest[1] === b));
+  const base = bases.find((b) => (sub === "merge" ? rest.includes(`origin/${b}`) : rest[0] === "origin" && rest[1] === b));
   const branch = run(dir, ["git", "branch", "--show-current"]);
   if (!base || !branch || bases.includes(branch)) {
     return;

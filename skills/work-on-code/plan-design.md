@@ -10,7 +10,7 @@ inventory's files and what you need to settle a doubt; do not explore the repo f
 2. Pick one and say why the others lose.
 3. Write its `## Debt plan` section (Tier, Inventory, Shape, State, Deletes, Net lines), leaving `Plan review:` empty.
 
-Cut the work into bundles along module or area lines, up to ~3,000 changed lines each. In ultrafast mode (the brief
+Cut the work into bundles along module or area lines, as SKILL.md's Bundles section sizes them. In ultrafast mode (the brief
 says so), mark each item critical (money, outside writes, auth, data that cannot be rebuilt: tested) or not (checked
 by running).
 

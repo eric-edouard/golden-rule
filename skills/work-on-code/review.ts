@@ -86,15 +86,16 @@ async function review() {
     const state = verdict === "rework needed" ? "failure" : "success";
     if (run(dir, ["gh", "api", `repos/${repoOf(pr)}/statuses/${pr.headRefOid}`, "-f", "context=debt-verdict",
       "-f", `state=${state}`, "-f", `description=${description}`]) === null) throw new Error("could not post debt-verdict status");
-    // One line per posted run, so an audit can time reviews (statuses are not kept long enough to read back).
-    appendFileSync(join(homedir(), ".agents", "work-on-code-runs.jsonl"), `${JSON.stringify({ at: new Date().toISOString(),
-      pr: pr.url, sha: pr.headRefOid, kind: confirm ? "confirm" : "full", cli, model: usedModel, effort: usedEffort, verdict,
-      seconds: Math.round(performance.now() / 1000), promptChars: prompt.length })}\n`);
     // Kept only once posted, so the report a confirm reads is the one the gate trusts.
     if (!confirm) {
       mkdirSync(reports, { recursive: true });
       await Bun.write(join(reports, `${pr.headRefOid}.md`), report);
     }
+    // One line per posted run, so an audit can time reviews (statuses are not kept long enough to read back).
+    try {
+      appendFileSync(join(homedir(), ".agents", "work-on-code-runs.jsonl"), `${JSON.stringify({ at: new Date().toISOString(),
+        pr: pr.url, kind: confirm ? "confirm" : "full", seconds: Math.round(performance.now() / 1000) })}\n`);
+    } catch {} // best effort: the verdict is already posted and kept
     if (state === "failure") process.exitCode = 1;
   } finally {
     rmSync(temp, { recursive: true, force: true });

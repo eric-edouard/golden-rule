@@ -66,8 +66,15 @@ Set a policy in `.work-on-code.json` at the repo root, for example:
 
 The gate reads the base branch's policy on GitHub. An unreadable policy blocks the merge.
 It requires an exact listed model and at least the stated effort. Publishers default to the login running the gate.
-With a policy, the reviewed sha must be the head or carry across a clean base merge with the same tree and all
-base hunks more than 3 lines from the PR's hunks. Without a policy, list mechanical fixes since review in the PR.
+The reviewed sha must be the head or carry across a clean base merge with the same tree and all
+base hunks more than 3 lines from the PR's hunks.
+
+`review.ts <checkout> <pr> confirm …` reviews only the fixes since the nearest full review (`git diff` from that
+review merged with the head's base, at most 60 lines, a binary file over it), with `verdict-confirm.md` and the full
+review's report, which a full run keeps in `<git common dir>/work-on-code/<sha>.md`. Its status reads
+`confirm <verdict> | …`, and the gate pairs it with the nearest full status behind it: the policy's model and effort
+bind that full review, never the confirm (up to 60 lines are judged by any model), and both must name the PR's base.
+The cap and the saved report are checked by `review.ts` alone, like everything else the publisher posts.
 The proof trusts the publisher. Anyone with its token, including a PR author who holds it, can script a status.
 
 ## The check on the PR (`pr-status.ts`)

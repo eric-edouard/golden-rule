@@ -29,20 +29,21 @@ It refuses:
   `shell_environment_policy.inherit="core"` (`core` quoted or not): without them its commands see the login shell's secrets,
   and what they print goes to OpenAI. Values after `--` or on an enclosing `sh -c` do not count.
 - a plan (Claude's ExitPlanMode; Codex has no plan tool) with no `## Debt plan` section.
-- `gh pr merge` unless the PR description has `## Debt verdict` with a `Verdict:` other than "rework needed" and a
-  `Reviewed:` sha equal to the PR's current head, or carried to it across a clean merge of the base (run from the
-  PR's checkout: the head's tree equals `git merge-tree --write-tree <reviewed> <the base's sha on GitHub>`, and no hunk the
-  base brought in lies within 3 lines of the reviewed PR's own changed lines, a binary or mode change counting as the whole file), and a branch not behind its base (if the base moved,
-  merge it in, check, and confirm or redo the verdict); `--auto` also needs `--match-head-commit <the head's sha>`.
-  Merges through `gh api` are refused.
+- every `gh pr merge` missing `--match-head-commit <full current head sha>`, and merges through `gh api`.
+- a code merge behind its base or without a passing `debt-verdict` status for that base ref.
+- a hand-posted `debt-verdict` through `gh api …/statuses/…`. Run `review.ts` on the clean, pushed head, started outside the checkout.
 - `git push` of code to the repository's default branch: an explicit refspec, `HEAD`, `--all`, `--mirror`, or a bare
   push from that branch.
 
 Docs, memory and data are never gated: any `.md`, `.txt`, `.csv`, `.jsonl` or `.log` file, and any non-script file
 under `docs/`, `memory/`, `data/` or `reports/`, except agent instructions (`AGENTS.md`, `CLAUDE.md`, `SKILL.md`,
-`prompts/`, `.claude/`, `.agents/`, `.cursor/`, `docs/agents/`). A repository that holds only data marks itself with
-a `.data-repo` file at its root: there every non-script file is data, wherever it lives. A push or a PR that only
-changes those goes through. Dry runs and tags pass too.
+`prompts/`, `skills/`, `.claude/`, `.agents/`, `.cursor/`, `docs/agents/`; both names of a renamed file count). A repository that holds only data marks itself with
+a `.data-repo` file at its root. There any non-script file counts as data except instructions and the root
+`.work-on-code.json` reviewer policy. A data-only push or PR skips review. Dry runs and tags pass too.
+
+The gate looks for the nearest `debt-verdict` status at most 20 first-parent commits back from the head, so its
+hook stays inside its timeout. The status description is capped at GitHub's 140 characters, which limits the base
+branch name to about 60.
 
 It sees commands inside `sh -c`/`bash -lc` (how Codex runs them) and skips heredoc bodies. It fails closed: if it
 cannot check, it refuses. It stops the ordinary ways of merging, not a determined bypass (subshells, aliases, curl):
@@ -50,21 +51,36 @@ the user can always merge themselves. The pre-push hook gates the user's own pus
 too, and any harness's; `git push --no-verify` or `-c core.hooksPath=` skips it, and a merge is checked only by the
 tool hook (it happens on GitHub, where no git hook runs).
 
-## The gate on the PR (`pr-status.ts`)
+## Verdict proof
 
-Where the merge cannot be blocked on GitHub (no branch protection, no CI), `pr-status.ts <prefix>` shows the gate on
-the PR as commit statuses. It is a Claude Code `PostToolUse` hook (matcher `Bash`), registered by a repo that wants it
+`review.ts` pins the base and head, runs a fresh read-only review and posts the status on the reviewed commit.
+The description records `<verdict> | <model> <effort> | <base ref>@<base sha>`. Retargeting needs a new run.
+Starting at the head, the gate takes the nearest PR commit with a trusted status. Its newest trusted status
+wins (highest id on a tie). A failed rerun blocks the merge. The PR description is the report for people.
+
+Set a policy in `.work-on-code.json` at the repo root, for example:
+
+```json
+{"reviewer":{"models":["claude-opus-5-5"],"effort":"medium","publishers":["<login>"]}}
+```
+
+The gate reads the base branch's policy on GitHub. An unreadable policy blocks the merge.
+It requires an exact listed model and at least the stated effort. Publishers default to the login running the gate.
+With a policy, the reviewed sha must be the head or carry across a clean base merge with the same tree and all
+base hunks more than 3 lines from the PR's hunks. Without a policy, list mechanical fixes since review in the PR.
+The proof trusts the publisher. Anyone with its token, including a PR author who holds it, can script a status.
+
+## The check on the PR (`pr-status.ts`)
+
+`pr-status.ts <prefix>` is a Claude Code `PostToolUse` hook (matcher `Bash`), registered by a repo that wants it
 (`bun pr-status.ts mad`). After a command that pushed (`git push`) or edited a PR (`gh pr create|edit|ready`, the
 `gh api -X PATCH …/pulls/<n>` fallback) of the folder's own repo, it posts on the PR's head. A PR named by number
 or URL is shown when it belongs to the folder's repo (another repo's is skipped); the branch's PR only when the
 checkout's HEAD is its head. Tag-only, deleting and dry-run pushes are ignored.
 
-- `<prefix>/debt-verdict`: the gate's rule on the verdict at that moment (`verdictOf`, the same code `gh pr merge` is
-  checked with): success with the verdict and net lines; pending without a verdict for the head, or behind the base;
-  failure on "rework needed". The base can move later: the status is as of the last push or edit.
-- `<prefix>/check`, in repos with a `check` script, only from the PR's clean, pushed head: success when
-  `<git dir>/check-passed` (the tree the repo's pre-push hook last saw `bun run check` pass on, clean before and
-  after) is the head's tree, pending otherwise.
+In repos with a `check` script, it posts `<prefix>/check` from the clean, pushed head: success when
+`<git dir>/check-passed` (the tree the repo's pre-push hook last saw `bun run check` pass on, clean before and
+after) is the head's tree, pending otherwise.
 
 It never refuses anything and is silent on errors and branches with no open PR.
 

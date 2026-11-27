@@ -3,11 +3,11 @@
 //   bun land.ts <pr number> [area...]
 // Takes the landing lock, merges origin/<base> once, pushes (the repo's pre-push check runs), applies the gate's
 // verdict rule to the pushed head, merges, drops the lock. Exit 0 merged; 1 refused or failed (why on stderr); 3 the
-// base changed the PR's own files since its review: run the base round of verdict-confirm.md on the diff it names, then
+// base changed the PR's own files since its review: run the base-review.md on the diff it names, then
 // run again with LAND_BASE_CHECKED=<the sha it printed> (a later base change asks again). LAND_METHOD: merge (default),
 // squash or rebase.
 import { join } from "node:path";
-import { PR_FIELDS, type Pr, reviewedOf, run, verdictOf } from "./gate";
+import { PR_FIELDS, type Pr, proofOf, run, verdictOf } from "./gate";
 
 const [pr, ...areas] = process.argv.slice(2);
 const dir = process.cwd();
@@ -30,7 +30,7 @@ const before = view();
 if (run(dir, ["git", "branch", "--show-current"]) !== before.headRefName) {
   fail(`this checkout is not on PR ${pr}'s branch (${before.headRefName})`);
 }
-if (run(dir, ["git", "status", "--porcelain"])) {
+if (run(dir, ["git", "status", "--porcelain"]) !== "") {
   fail("this checkout has uncommitted changes");
 }
 // The lock records this process, so a landing killed past these handlers (SIGKILL) frees it at the next take.
@@ -50,19 +50,25 @@ if (!(shown(["git", "fetch", "-q", "origin", base]) && shown(["git", "merge", "-
   fail(`conflict with ${base}: resolve it, then a full verdict round`);
 }
 const head = run(dir, ["git", "rev-parse", "HEAD"]) as string;
-const reviewed = reviewedOf(before);
-const files = before.files.map((f) => f.path);
-// null when the diff fails (an unknown sha): the base round is then asked for, never skipped.
-const moved = reviewed && files.length > 0 ? run(dir, ["git", "diff", "--name-only", reviewed, head, "--", ...files]) : "";
 if (!shown(["git", "push", "-q", "origin", "HEAD"])) {
   fail("push failed (the check)");
 }
-if (moved !== "" && process.env.LAND_BASE_CHECKED !== head) {
-  fail(`${base} changed PR ${pr}'s files: base round on git diff ${reviewed}..${head} -- <the PR's files>; then LAND_BASE_CHECKED=${head}`, 3);
+const pushed = view();
+if (pushed.headRefOid !== head || pushed.baseRefName !== base || pushed.baseRefOid !== run(dir, ["git", "rev-parse", `origin/${base}`])) {
+  fail("GitHub's PR head or base differs from the checkout; run land.ts again");
 }
-const { state, why } = verdictOf(dir, { ...view(), headRefOid: head }, true) // GitHub may not show the push yet;
+const proof = proofOf(dir, pushed);
+const { state, why } = verdictOf(dir, pushed, true, proof);
 if (state !== "success") {
   fail(why);
+}
+if (proof && proof.baseSha !== pushed.baseRefOid && process.env.LAND_BASE_CHECKED !== pushed.baseRefOid) {
+  const range = `${proof.baseSha}..${pushed.baseRefOid}`;
+  const files = run(dir, ["git", "diff", "--name-only", "--no-renames", `${proof.baseSha}...${head}`])?.split("\n").filter(Boolean);
+  if (!files) fail("cannot list the PR files for the base round");
+  const moved = run(dir, ["git", "diff", "--name-only", range, "--", ...files]);
+  if (moved === null) fail(`cannot read the base diff ${range}`);
+  if (moved) fail(`${base} changed PR ${pr}'s files: base round on git diff ${range} -- <the PR's files>; then LAND_BASE_CHECKED=${pushed.baseRefOid}\n${moved}`, 3);
 }
 if (!shown(["gh", "pr", "merge", pr as string, `--${process.env.LAND_METHOD ?? "merge"}`, "--match-head-commit", head])) {
   fail("gh pr merge failed");

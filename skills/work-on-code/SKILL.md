@@ -132,7 +132,8 @@ Everything of fast mode, and:
   what you already read.
 - **Session hygiene** (builders and orchestrators): never poll. Start a check, a review or a landing as one
   background command that reports when it ends, then end the turn; when you must wait in the foreground, wait in one
-  command (`gh pr checks --watch`). Sleeping between turns is a bug.
+  command (`gh pr checks --watch`). Sleeping between turns is a bug. To see how a delegating agent is doing, read its
+  helpers' transcripts (`subagents/*.jsonl`), not its own: it looks idle while it waits on them.
 - **Main session context.** Every turn rereads it, so its length is the cost.
   - Keep only the goal, the plan, decisions, PR numbers and stages, and the user's open asks. Bulk (investigations across
     many files, logs, audits, reviews, screenshots of many screens) goes to a subagent that returns 10 lines or fewer, with file:line evidence.
@@ -147,7 +148,10 @@ Everything of fast mode, and:
   - A screenshot is costly: take one only to judge visuals, at reduced scale when possible; read state from the accessibility or text tree.
 - **One builder, one PR.** A builder (agent or session) builds one PR through its verdict fixes, then ends; the next
   PR gets a fresh one with a one-page brief. A delegated builder runs at senior rank (junior for mechanical volume),
-  never frontier; its brief names the files and the tests to run, and it runs only those while iterating, with output short and files read by range.
+  never frontier; its brief names the files and the tests to run, and it runs only those while iterating, with output short and files read by range. It commits
+  after each fix; a stalled builder (no output past its watchdog) is stopped and replaced by a finisher that starts
+  from the branch's commits and never rebuilds. Work from test passes: one PR per round, and a pass reported while that
+  PR is open folds its fixes into it before the verdict.
 - **Thin orchestrator** (a session running several builders): it plans, launches and relays; it acts only when woken.
   - Each open item of the plan's checklist names its dependencies (`needs: <item>`); the plan states a parallel cap
     (default 4 builders).
@@ -201,7 +205,7 @@ never the worktree you keep editing. Work done in one sitting skips it: the verd
 
 **Stop signals:** revert a failed fix before the next; two failed fixes means re-diagnose (and the tier is now hard); a
 returning bug gets a root-cause fix and a regression test (ultrafast: when critical); a diff growing far past the
-request means stop and rethink.
+request means stop and rethink; a flaky test gets its cause fixed, never only a longer timeout.
 
 **Legible design:** names are design, one source of truth per state, one job per module, finish every migration, a rule
 every session needs goes into the repo's `AGENTS.md` as one line, a module's how and why into `docs/architecture.md` or
@@ -230,7 +234,8 @@ request or a related cleanup.
    left means `rework needed`.
 5. **Write the verdict into the PR description** (`gh pr edit --body-file`, or `gh api -X PATCH
    repos/{owner}/{repo}/pulls/{n} -F body=@file` when that fails), replacing any earlier one, in its own command,
-   never chained with the merge (the gate checks the PR before the command runs):
+   never chained with the merge (the gate checks the PR before the command runs). Keep the lines plain, exactly as
+   below (no bold or bullets): the gate reads `Reviewed:` and `Verdict:` only at the start of a line.
 
    ```
    ## Debt verdict

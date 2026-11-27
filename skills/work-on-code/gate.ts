@@ -4,7 +4,8 @@
 // stdin and refuses (exit 2, the reason on stderr) a plan with no debt plan section, a merge whose PR carries no
 // passing debt verdict of its current head, and a push of code to a repository's default branch (a data-only
 // push, a job's report or log, goes through). Every other call passes untouched. The proof trusts its publisher. Anyone with that token can script a status.
-import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 /** A command's output, or null when it fails or cannot start (e.g. a folder an earlier part of the command creates). */
 export const run = (cwd: string, cmd: string[]) => {
@@ -493,6 +494,13 @@ export function gitCall(w: string[], cwd: string) {
 }
 
 /** A branch merges its base only at landing (land.ts) or on a real conflict: each early merge costs a full check. */
+/** Whether `branch` holds a landing lock (land-lock.sh), the one time a branch merges its base. */
+function landing(branch: string) {
+  const tmp = process.env.TMPDIR ?? "/tmp";
+  return [...new Bun.Glob("work-on-code-land-*/branch").scanSync({ cwd: tmp, onlyFiles: true })]
+    .some((f) => readFileSync(join(tmp, f), "utf8").trim() === branch);
+}
+
 function checkBaseMerge(dir: string, args: string[]) {
   // Words that are not options or option values (`-m <msg>`, `-s <strategy>`…), so a message never reads as a target.
   const words = args.filter((a, i) => !a.startsWith("-") && !/^-[mFsX]$|^--(message|file|strategy|strategy-option)$/.test(args[i - 1] ?? ""));
@@ -500,7 +508,7 @@ function checkBaseMerge(dir: string, args: string[]) {
   const bases = defaults(dir);
   const base = bases.find((b) => (sub === "merge" ? rest.includes(`origin/${b}`) : rest[0] === "origin" && rest[1] === b));
   const branch = run(dir, ["git", "branch", "--show-current"]);
-  if (!base || !branch || bases.includes(branch)) {
+  if (!base || !branch || bases.includes(branch) || landing(branch)) {
     return;
   }
   // A pull fetches first, so check what it would fetch; a merge takes the local ref as it is. No fetch: let it through.

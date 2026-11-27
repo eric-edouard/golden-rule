@@ -93,6 +93,7 @@ async function review() {
     }
     // One line per posted run, so an audit can time reviews (statuses are not kept long enough to read back).
     try {
+      mkdirSync(join(homedir(), ".agents"), { recursive: true });
       appendFileSync(join(homedir(), ".agents", "work-on-code-runs.jsonl"), `${JSON.stringify({ at: new Date().toISOString(),
         pr: pr.url, kind: confirm ? "confirm" : "full", seconds: Math.round(performance.now() / 1000) })}\n`);
     } catch {} // best effort: the verdict is already posted and kept

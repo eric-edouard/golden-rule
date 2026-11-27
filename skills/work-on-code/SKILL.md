@@ -210,7 +210,8 @@ never the worktree you keep editing. Work done in one sitting skips it: the verd
   plan stays true); drift that is wrong gets fixed now.
 - Never wait on it, never let it edit. It ends when the PR is ready.
 
-**Stop signals:** revert a failed fix before the next; two failed fixes means re-diagnose (and the tier is now hard); a
+**Stop signals:** before the first fix of a failure, replay the failing run locally end to end (to its last step,
+e.g. the mail sent) and list every cause it shows: fix them in one change, never the first alone; revert a failed fix before the next; two failed fixes means re-diagnose (and the tier is now hard); a
 returning bug gets a root-cause fix and a regression test (ultrafast: when critical); a diff growing far past the
 request means stop and rethink; a flaky test gets its cause fixed, never only a longer timeout.
 

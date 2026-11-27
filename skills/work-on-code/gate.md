@@ -37,9 +37,13 @@ It refuses:
 
 Docs, memory and data are never gated: any `.md`, `.txt`, `.csv`, `.jsonl` or `.log` file, and any non-script file
 under `docs/`, `memory/`, `data/` or `reports/`, except agent instructions (`AGENTS.md`, `CLAUDE.md`, `SKILL.md`,
-`prompts/`, `.claude/`, `.agents/`, `.cursor/`, `docs/agents/`). A repository that holds only data marks itself with
+`prompts/`, `skills/`, `.claude/`, `.agents/`, `.cursor/`, `docs/agents/`; both names of a renamed file count). A repository that holds only data marks itself with
 a `.data-repo` file at its root. There any non-script file counts as data except instructions and the root
 `.work-on-code.json` reviewer policy. A data-only push or PR skips review. Dry runs and tags pass too.
+
+The gate looks for the nearest `debt-verdict` status at most 20 first-parent commits back from the head, so its
+hook stays inside its timeout. The status description is capped at GitHub's 140 characters, which limits the base
+branch name to about 60.
 
 It sees commands inside `sh -c`/`bash -lc` (how Codex runs them) and skips heredoc bodies. It fails closed: if it
 cannot check, it refuses. It stops the ordinary ways of merging, not a determined bypass (subshells, aliases, curl):

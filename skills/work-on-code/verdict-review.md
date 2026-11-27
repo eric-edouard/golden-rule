@@ -24,7 +24,9 @@ concept.
 **4. Deletion:** dead code, unused exports or options, speculative flexibility, comments that restate code.
 
 **Blocking** means only: data loss, a wrong or duplicate send, a lost or starved event, a privacy or security leak, a
-broken AGENTS.md invariant, wrong stored data. Mark every finding `Blocking` or `Later`. `Verdict: rework needed`
+broken AGENTS.md invariant, wrong stored data, each reached by an input this repo really gets: name that input (a
+caller, a command, a request). A path no caller, script or user takes (a race nothing triggers, an attacker the repo
+does not face, a misuse of a hand-run tool) is `Later`. Mark every finding `Blocking` or `Later`. `Verdict: rework needed`
 only when a Blocking item exists.
 
 Report, ranked: what, where (file:line), the change, net lines. Name each problem's class and list every instance of

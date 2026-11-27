@@ -6,7 +6,7 @@ the changed files around each hunk, and their callers when a hunk changes behavi
 
 Check two things: every `Blocking` item of the report is fixed by this diff, and the fixes add no Blocking problem of
 their own (bugs, edge cases, security, dead code, a new function, type, module or concept the report did not ask
-for). Anything else you notice, in code the fixes did not touch or of `Later` weight, is a `Later` item: it never
+for), each reached by an input this repo really gets, named as the full review's Blocking bar asks. Anything else you notice, in code the fixes did not touch or of `Later` weight, is a `Later` item: it never
 holds the merge and never asks for another round.
 
 Report each Blocking item as `fixed` or `not fixed` (file:line), then each Blocking problem the fixes add, then the

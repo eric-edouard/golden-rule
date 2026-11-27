@@ -494,14 +494,19 @@ export function gitCall(w: string[], cwd: string) {
 
 /** A branch merges its base only at landing (land.ts) or on a real conflict: each early merge costs a full check. */
 function checkBaseMerge(dir: string, args: string[]) {
-  const [sub, ...rest] = args.filter((a) => !a.startsWith("-"));
+  // Words that are not options or option values (`-m <msg>`, `-s <strategy>`…), so a message never reads as a target.
+  const words = args.filter((a, i) => !a.startsWith("-") && !/^-[mFsX]$|^--(message|file|strategy|strategy-option)$/.test(args[i - 1] ?? ""));
+  const [sub, ...rest] = words;
   const bases = defaults(dir);
   const base = bases.find((b) => (sub === "merge" ? rest.includes(`origin/${b}`) : rest[0] === "origin" && rest[1] === b));
   const branch = run(dir, ["git", "branch", "--show-current"]);
   if (!base || !branch || bases.includes(branch)) {
     return;
   }
-  run(dir, ["git", "fetch", "-q", "origin", base]);
+  // A pull fetches first, so check what it would fetch; a merge takes the local ref as it is. No fetch: let it through.
+  if (sub === "pull" && run(dir, ["git", "fetch", "-q", "origin", base]) === null) {
+    return;
+  }
   // merge-tree exits 1 on a conflict, 0 on a clean merge; anything else (an old git) lets the merge through.
   if (Bun.spawnSync(["git", "merge-tree", "--write-tree", "HEAD", `origin/${base}`], { cwd: dir }).exitCode === 0) {
     deny(`origin/${base} merges into this branch without a conflict: land.ts merges it once at landing. Merge it now only on a real conflict.`);

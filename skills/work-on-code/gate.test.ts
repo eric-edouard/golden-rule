@@ -525,6 +525,7 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   const fix = commit("echo fix >> shared.ts");
   writeFileSync(report, "Verdict: no debt added");
   expect(confirm(fix).exitCode).toBe(0);
+  expect(JSON.parse(readFileSync(runLog, "utf8").trim().split("\n").at(-1)!)).toMatchObject({ kind: "confirm" });
   expect(readFileSync(posted, "utf8")).toContain(`statuses/${fix}`);
   expect(readFileSync(posted, "utf8")).toContain(`confirm no debt added | gpt-review high | main@${base}`);
   expect(readFileSync(prompt, "utf8")).toContain("Confirming fixes");
@@ -622,13 +623,18 @@ test("a branch merges its base only on a conflict; the default branch pulls free
   const feat = join(root, "mb-feat");
   sh(top, "echo b > g.ts && git add g.ts");
   c(top, "commit -q -m b && git push -q --no-verify origin main");
-  expect(gate(feat, "git fetch -q && git merge -q origin/main -m sync")).toBe(2); // clean: wait for landing
+  sh(feat, "git fetch -q");
+  expect(gate(feat, "git merge -q origin/main -m sync")).toBe(2); // clean: wait for landing
+  expect(gate(feat, "git merge -m origin/main other")).toBe(0); // a message is not a target
   expect(gate(feat, "git pull origin main")).toBe(2);
+  expect(gate(feat, "git pull upstream main")).toBe(0); // another remote
+  expect(gate(feat, "git pull origin nope")).toBe(0);
   expect(gate(top, "git pull origin main")).toBe(0); // the default branch itself
   expect(gate(feat, "git merge other")).toBe(0);
   sh(feat, "echo x > f.ts && git add f.ts");
   c(feat, "commit -q -m x");
   sh(top, "echo y > f.ts && git add f.ts");
   c(top, "commit -q -m y && git push -q --no-verify origin main");
+  sh(feat, "git fetch -q");
   expect(gate(feat, "git merge origin/main")).toBe(0); // a real conflict
 });

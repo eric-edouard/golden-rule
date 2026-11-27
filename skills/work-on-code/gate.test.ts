@@ -371,6 +371,7 @@ case "$1 $2" in
   'pr view') remote "$PR_VIEW";;
   'pr merge') exit 0;;
   'api user') echo reviewer;;
+  'api rate_limit') [ -n "$RATE" ] && echo "$RATE" || exit 1;;
   *git/trees/${headSha}) if [ -n "$HEAD_TREE" ]; then echo "$HEAD_TREE"; else echo "$TREE"; fi;;
   *git/trees/*) echo "$TREE";;
   *contents/.work-on-code.json*) [ -n "$POLICY" ] && echo "$POLICY";;
@@ -584,6 +585,10 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   expect(existsSync(posted)).toBe(false);
   sh(dir, `git reset -q --hard ${head}`);
   expect(land(head).stderr.toString()).toContain("merges the base"); // not a merge commit
+  expect(Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "codex", "gpt-review"], {
+    cwd: root, env: fakeGh({ RATE: "3 1800000000", PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: head }), POSTED: posted }),
+  }).stderr.toString()).toContain("API limit"); // no review GitHub could not record
+  expect(existsSync(posted)).toBe(false);
   expect(existsSync(posted)).toBe(false);
 }, 30_000);
 

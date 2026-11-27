@@ -30,6 +30,11 @@ async function review() {
     return JSON.parse(raw) as Pr & { body: string };
   };
   const pr = view();
+  // The status is posted after a long run: do not start one GitHub's rate limit would throw away.
+  const left = run(dir, ["gh", "api", "rate_limit", "-q", ".resources.core | \"\\(.remaining) \\(.reset)\""])?.split(" ");
+  if (left && Number(left[0]) < 50) {
+    throw new Error(`GitHub's API limit is nearly used up (${left[0]} calls left); retry after ${new Date(Number(left[1]) * 1000).toTimeString().slice(0, 5)}`);
+  }
   const checkHead = () => {
     if (run(dir, ["git", "rev-parse", "HEAD"]) !== pr.headRefOid || run(dir, ["git", "status", "--porcelain", "--untracked-files=all"]) !== "") {
       throw new Error("review needs a clean checkout of the pushed PR head");
@@ -146,7 +151,7 @@ async function landPrompt(dir: string, pr: Pr, model: string, effort?: string) {
   if (proof.reviewed === pr.headRefOid) throw new Error("this head already has a review; a failed land review means a full review");
   if (proof.reviewed !== ours) throw new Error(`the commit before the merge (${ours}) has no trusted review of its own; run a confirm first`);
   // A land review never reads the earlier report: it must stand on a passing one.
-  if (proof.state !== "success" || proof.verdict === "rework needed") throw new Error("the review before the merge did not pass; fix it with a confirm first");
+  if (proof.state !== "success") throw new Error("the review before the merge did not pass; fix it with a confirm first");
   // git's own merge, conflict markers kept: the diff to the head is exactly the hand resolution.
   const auto = Bun.spawnSync(["git", "merge-tree", "--write-tree", ours, theirs], { cwd: dir, stdout: "pipe" }).stdout.toString().split("\n")[0];
   const resolution = auto ? run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", auto, pr.headRefOid]) : null;

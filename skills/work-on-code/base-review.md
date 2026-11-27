@@ -1,7 +1,8 @@
 # Reviewing base changes before merge
 
 Read the base diff from `land.ts` and the PR lines it touches. Check whether the base changed anything
-those lines define, decide or call. Do not edit, commit, push or comment. End with `Base: clean` or
+those lines define, decide or call. A PR line changed only to follow the base (a rename, a moved import, a new
+signature) is the resolution, not `touches`. Do not edit, commit, push or comment. End with `Base: clean` or
 `Base: touches <name>, file:line`.
 
 When `review.ts … land` runs you, you also see a conflict resolved by hand: git's own merge with its conflict

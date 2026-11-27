@@ -84,6 +84,8 @@ the last step mostly confirms.
 | Verdict (diff follows the debt plan, checked when hard) | never | junior | senior |
 | Verdict (no debt plan, or a diff mostly outside it) | junior | senior | frontier |
 
+- Verdict effort: medium; high for hard tier. A reviewer that returns no `Verdict:` (a refusal, an empty report):
+  rerun once on the other CLI at the same rank.
 - A small-tier reviewer that finds a function, type, module or concept added says so: the tier was wrong, redo the
   verdict as standard.
 - Reviewers are always fresh agents with no memory of the work, and never edit, commit, push or comment. Never
@@ -229,13 +231,16 @@ request or a related cleanup.
 3. **Act on the report.** **Do it**: fix on the branch. **Rework**: do it in this PR when it is the change's own
    foundation, or open it now as its own task or PR with a complete brief; say which, per item, never as a line of
    prose. **Kept on purpose**: only with a reason the user would accept. A finding is evidence, not an order (above all
-   from another CLI): check it against the code before acting; a claim about behavior needs a reachable input.
+   from another CLI): check it against the code before acting; a claim about behavior needs a reachable input. A
+   Blocking item with no reachable input is `Later`: say so in the report, do not fix it.
 4. **At most three review rounds: the full review, then up to two confirms.** After fixing, push and run a confirm
    (intern rank, low effort, any fix size; a repo's reviewer policy binds it too): `cd ~ && bun
    ~/.agents/skills/work-on-code/review.ts <checkout> <pr> confirm <codex|claude> <model> low`. It reads the full
    review's report (kept by `review.ts` on this machine) and the fixes alone. A new full review only when a confirm
-   says `Reshaped: yes`, and it restarts the three rounds. After the second confirm the loop stops (`review.ts` refuses
-   a third): what is still Blocking means `rework needed`, split out as a rework PR or brought to the user. List each fix below.
+   says `Reshaped: yes`, and it restarts the three rounds. A fix answers its finding and nothing more: each extra line
+   is new review surface. After the second confirm the loop stops (`review.ts` refuses a third): what is still
+   Blocking means `rework needed`, split out as a rework PR or brought to the user; never start a full review on your
+   own to clear it. List each fix below.
    Track `Later` findings in one `debt` issue.
 5. **Write the report for people** under `## Debt verdict` in the PR description. Replace the previous report
    with `gh pr edit --body-file`, or `gh api -X PATCH repos/{owner}/{repo}/pulls/{n} -F body=@file`.

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // Run a review from the pushed checkout. Only the wrapper writes the verdict status.
-// Full: the PR's whole diff. Confirm: only the fixes since the nearest full review, at most two confirms (gate.md).
+// Full: the PR's whole diff. Confirm: only the fixes since the nearest full review, at most two confirms.
+// Land: a base merge resolved by hand, uses no round (gate.md).
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -11,11 +12,12 @@ const MAX_CONFIRMS = 2;
 
 async function review() {
   const args = process.argv.slice(2);
-  const confirm = args[2] === "confirm";
-  const [checkout, number, cli, model, effort, ...extra] = confirm ? [...args.slice(0, 2), ...args.slice(3)] : args;
+  const mode = ["confirm", "land"].includes(args[2] ?? "") ? args[2] : undefined;
+  const partial = mode !== undefined; // confirm or land: judges only what changed since a review
+  const [checkout, number, cli, model, effort, ...extra] = partial ? [...args.slice(0, 2), ...args.slice(3)] : args;
   if (!checkout || !/^\d+$/.test(number ?? "") || !["codex", "claude"].includes(cli ?? "") ||
       !model || !/^[\w][\w./:[\]-]*$/.test(model) || (effort !== undefined && !EFFORTS.includes(effort)) || extra.length) {
-    throw new Error("usage: bun review.ts <checkout> <pr> [confirm] <codex|claude> <model> [effort], started outside the checkout");
+    throw new Error("usage: bun review.ts <checkout> <pr> [confirm|land] <codex|claude> <model> [effort], started outside the checkout");
   }
   const dir = run(checkout, ["git", "rev-parse", "--show-toplevel"]);
   if (!dir) throw new Error("review needs a git checkout");
@@ -28,6 +30,11 @@ async function review() {
     return JSON.parse(raw) as Pr & { body: string };
   };
   const pr = view();
+  // The status is posted after a long run: do not start one GitHub's rate limit would throw away.
+  const left = run(dir, ["gh", "api", "rate_limit", "-q", ".resources.core | \"\\(.remaining) \\(.reset)\""])?.split(" ");
+  if (left && Number(left[0]) < 50) {
+    throw new Error(`GitHub's API limit is nearly used up (${left[0]} calls left); retry after ${new Date(Number(left[1]) * 1000).toTimeString().slice(0, 5)}`);
+  }
   const checkHead = () => {
     if (run(dir, ["git", "rev-parse", "HEAD"]) !== pr.headRefOid || run(dir, ["git", "status", "--porcelain", "--untracked-files=all"]) !== "") {
       throw new Error("review needs a clean checkout of the pushed PR head");
@@ -39,7 +46,8 @@ async function review() {
   if (!mergeBase) throw new Error("cannot find the merge base; fetch the base before reviewing");
   // Each full report is kept beside the repo's objects (shared by its worktrees), for a confirm review to read.
   const reports = join(resolve(dir, run(dir, ["git", "rev-parse", "--git-common-dir"]) ?? ".git"), "work-on-code");
-  const prompt = confirm ? await confirmPrompt(dir, pr, mergeBase, reports, model!, effort) : await fullPrompt(dir, pr, mergeBase);
+  const prompt = mode === "land" ? await landPrompt(dir, pr, model!, effort)
+    : partial ? await confirmPrompt(dir, pr, mergeBase, reports, model!, effort) : await fullPrompt(dir, pr, mergeBase);
   const temp = mkdtempSync(join(tmpdir(), "debt-review-"));
   try {
     const effortFile = join(temp, "effort");
@@ -81,13 +89,13 @@ async function review() {
     if (pr.headRefOid !== after.headRefOid || pr.baseRefName !== after.baseRefName || pr.baseRefOid !== after.baseRefOid) {
       throw new Error("PR head or base moved during review; rerun review.ts");
     }
-    const description = `${confirm ? "confirm " : ""}${verdict} | ${usedModel} ${usedEffort} | ${pr.baseRefName}@${mergeBase}`;
+    const description = `${mode ? `${mode} ` : ""}${verdict} | ${usedModel} ${usedEffort} | ${pr.baseRefName}@${mergeBase}`;
     if (description.length > 140) throw new Error("debt-verdict status is over GitHub's 140 characters (base branch name too long)");
     const state = verdict === "rework needed" ? "failure" : "success";
     if (run(dir, ["gh", "api", `repos/${repoOf(pr)}/statuses/${pr.headRefOid}`, "-f", "context=debt-verdict",
       "-f", `state=${state}`, "-f", `description=${description}`]) === null) throw new Error("could not post debt-verdict status");
     // Kept only once posted, so the report a confirm reads is the one the gate trusts.
-    if (!confirm) {
+    if (!partial) {
       mkdirSync(reports, { recursive: true });
       await Bun.write(join(reports, `${pr.headRefOid}.md`), report);
     }
@@ -107,14 +115,19 @@ async function fullPrompt(dir: string, pr: Pr & { body: string }, mergeBase: str
   return `${instructions}\n\n${architecture}\n\nDebt plan:\n${plan}\n\nPinned diff ${range}:\n${diff}`;
 }
 
-/** The fixes since the nearest full review, from that review merged with the base the head holds (so a base merge is not shown as the PR's). */
-async function confirmPrompt(dir: string, pr: Pr, mergeBase: string, reports: string, model: string, effort?: string) {
+/** The proof a confirm or land review builds on, refused before running when the named model is below the repo policy. */
+function partialProof(dir: string, pr: Pr, model: string, effort?: string) {
   const proof = proofOf(dir, pr);
   if (!proof) throw new Error("a docs-and-data PR needs no review");
-  // Refuse before running: a confirm below the policy would prove nothing (the gate skips it).
   if (!meets(proof.policy, { model, effort: effort ?? "" })) {
     throw new Error(`the repo's reviewer policy needs ${proof.policy!.models.join(" or ")} at ${proof.policy!.effort} or above, named exactly with its effort`);
   }
+  return proof;
+}
+
+/** The fixes since the nearest full review, from that review merged with the base the head holds (so a base merge is not shown as the PR's). */
+async function confirmPrompt(dir: string, pr: Pr, mergeBase: string, reports: string, model: string, effort?: string) {
+  const proof = partialProof(dir, pr, model, effort);
   if (proof.confirms >= MAX_CONFIRMS) throw new Error(`${MAX_CONFIRMS} confirm rounds already ran after the full review: the loop stops; what is still Blocking is rework needed: split it into a rework PR or ask the user`);
   const fullSha = proof.full.reviewed;
   const report = Bun.file(join(reports, `${fullSha}.md`));
@@ -126,6 +139,27 @@ async function confirmPrompt(dir: string, pr: Pr, mergeBase: string, reports: st
   if (diff === "") throw new Error(`no fixes since ${fullSha}`);
   const instructions = await Bun.file(join(import.meta.dir, "verdict-confirm.md")).text();
   return `${instructions}\n\nEarlier full review of ${fullSha}:\n${await report.text()}\n\nFixes since then:\n${diff}`;
+}
+
+/** A base merge resolved by hand: the resolution (head against git's own merge of its parents) and the base changes under the PR's files. */
+async function landPrompt(dir: string, pr: Pr, model: string, effort?: string) {
+  const proof = partialProof(dir, pr, model, effort);
+  const [, ours, theirs, ...more] = run(dir, ["git", "rev-list", "--parents", "-n", "1", pr.headRefOid])?.split(" ") ?? [];
+  if (!ours || !theirs || more.length || run(dir, ["git", "merge-base", "--is-ancestor", theirs, pr.baseRefOid]) === null) {
+    throw new Error("land reviews a head that merges the base into the PR; merge origin/<base>, commit and push first");
+  }
+  if (proof.reviewed === pr.headRefOid) throw new Error("this head already has a review: rerun nothing if it passed; after a failed land review, run a full review");
+  if (proof.reviewed !== ours) throw new Error(`the commit before the merge (${ours}) has no trusted review of its own; run a confirm first`);
+  // A land review never reads the earlier report: it must stand on a passing one.
+  if (proof.state !== "success") throw new Error("the review before the merge did not pass; fix it with a confirm first");
+  // git's own merge, conflict markers kept: the diff to the head is exactly the hand resolution.
+  const auto = Bun.spawnSync(["git", "merge-tree", "--write-tree", ours, theirs], { cwd: dir, stdout: "pipe" }).stdout.toString().split("\n")[0];
+  const resolution = auto ? run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", auto, pr.headRefOid]) : null;
+  const files = run(dir, ["git", "diff", "--name-only", "--no-renames", `${proof.full.baseSha}...${ours}`])?.split("\n").filter(Boolean);
+  const base = files && run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", `${proof.full.baseSha}..${theirs}`, "--", ...files]);
+  if (resolution === null || base === null || base === undefined) throw new Error("cannot read the merge; fetch the base first");
+  const instructions = await Bun.file(join(import.meta.dir, "base-review.md")).text();
+  return `${instructions}\n\nResolution (git's merge with conflict markers → the pushed head):\n${resolution || "(none: a clean merge)"}\n\nBase changes under the PR's files:\n${base || "(none)"}`;
 }
 
 review().catch(e => { console.error(`review: ${e.message}`); process.exitCode = 1; });

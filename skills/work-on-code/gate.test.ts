@@ -371,6 +371,7 @@ case "$1 $2" in
   'pr view') remote "$PR_VIEW";;
   'pr merge') exit 0;;
   'api user') echo reviewer;;
+  'api rate_limit') [ -n "$RATE" ] && echo "$RATE" || exit 1;;
   *git/trees/${headSha}) if [ -n "$HEAD_TREE" ]; then echo "$HEAD_TREE"; else echo "$TREE"; fi;;
   *git/trees/*) echo "$TREE";;
   *contents/.work-on-code.json*) [ -n "$POLICY" ] && echo "$POLICY";;
@@ -436,6 +437,8 @@ test("only the nearest trusted verdict authorizes its pinned head", () => {
   const cheap = { ...confirmed, description: confirmed.description.replace("claude-opus-5-5 medium", "claude-haiku low") };
   expect(merge({ ...full(status), STATUSES: JSON.stringify([[cheap]]) })).toBe(0); // no policy: any confirm model
   expect(merge({ ...strict, ...full(status), STATUSES: JSON.stringify([[cheap]]) })).toBe(2); // policy: the confirm meets it too
+  const landed = { ...confirmed, description: confirmed.description.replace("confirm ", "land "), id: 4 };
+  expect(merge({ ...strict, ...full(status), STATUSES: JSON.stringify([[landed]]) })).toBe(0); // a land review stands like a confirm
   expect(merge({ ...strict, ...full(failed) })).toBe(0); // the confirm says its Blocking items are fixed
   expect(merge({ ...strict, ...full(confirmed) })).toBe(2); // confirms only, no full review
   expect(merge({ ...strict, ...full({ ...status, description: status.description.replace("medium", "low") }) })).toBe(2);
@@ -559,6 +562,32 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   expect(existsSync(posted)).toBe(false);
   sh(dir, `git reset -q --hard ${head} && mkdir .git/work-on-code && echo 'Verdict: debt reduced' > .git/work-on-code/${head}.md`);
   expect(confirm(head).stderr.toString()).toContain("no fixes since"); // nothing to confirm
+  expect(existsSync(posted)).toBe(false);
+  // Land: a base merge resolved by hand is reviewed alone, as a "land" status.
+  sh(dir, `git checkout -q -b side ${base} && echo side > shared.ts && git add shared.ts && git -c user.name=t -c user.email=t@t commit -qm side && git checkout -q pr`);
+  const side = sha("side");
+  sh(dir, "git -c user.name=t -c user.email=t@t merge -q side || true");
+  sh(dir, "echo resolved > shared.ts && git add shared.ts && git -c user.name=t -c user.email=t@t commit -qm 'merge side'");
+  const merged = sha("HEAD");
+  const reviewedFull = { ...status, description: `debt reduced | gpt-review high | main@${base}` };
+  const land = (pushed: string, statuses = [[reviewedFull]]) => Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "land", "codex", "gpt-mini"], {
+    cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: side, headRefOid: pushed }), POSTED: posted,
+      REVIEWED: head, STATUSES: JSON.stringify(statuses), COMPARE: JSON.stringify({ commits: chain(pushed, head), files: [{ filename: "shared.ts" }] }) }),
+  });
+  writeFileSync(report, "Base: clean\nVerdict: no debt added");
+  expect(land(merged).exitCode).toBe(0);
+  expect(readFileSync(posted, "utf8")).toContain(`land no debt added | gpt-review high | main@${side}`);
+  expect(readFileSync(prompt, "utf8")).toContain("+resolved"); // the hand resolution
+  expect(readFileSync(prompt, "utf8")).toContain("<<<<<<<"); // against git's own conflicted merge
+  unlinkSync(posted);
+  const failedFull = { ...reviewedFull, state: "failure", description: reviewedFull.description.replace("debt reduced", "rework needed") };
+  expect(land(merged, [[failedFull]]).stderr.toString()).toContain("did not pass"); // never launders a failed review
+  expect(existsSync(posted)).toBe(false);
+  sh(dir, `git reset -q --hard ${head}`);
+  expect(land(head).stderr.toString()).toContain("merges the base"); // not a merge commit
+  expect(Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "codex", "gpt-review"], {
+    cwd: root, env: fakeGh({ RATE: "3 1800000000", PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: head }), POSTED: posted }),
+  }).stderr.toString()).toContain("API limit"); // no review GitHub could not record
   expect(existsSync(posted)).toBe(false);
 }, 30_000);
 

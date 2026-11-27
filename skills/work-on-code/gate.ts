@@ -287,6 +287,10 @@ export function reportVerdict(report: string) {
   return value;
 }
 
+/** Whether a review's model and effort meet a repo's reviewer policy (no policy: any review does). */
+export const meets = (policy: Policy | undefined, r: { model: string; effort: string }) =>
+  !policy || (policy.models.includes(r.model) && EFFORTS.indexOf(r.effort) >= EFFORTS.indexOf(policy.effort));
+
 type Policy = { models: string[]; effort: string; publishers?: string[] };
 type Status = { context: string; creator: { login: string }; state: string; description: string; created_at: string; id: number };
 
@@ -338,7 +342,9 @@ export function proofOf(dir: string, pr: Pr) {
     if (!VERDICTS.includes(verdict) || !EFFORTS.includes(effort)) throw new Error("unknown verdict or effort");
     const review = { reviewed, verdict, model, effort, baseRef, baseSha, state: status.state, confirm: !!confirm };
     // A confirm review saw only the fixes since the nearest full review behind it: both make the proof.
+    // A confirm below the policy proves nothing and uses no round: it is skipped.
     if (review.confirm) {
+      if (!meets(policy, review)) continue;
       nearestConfirm ??= review;
       confirms += trusted.filter(s => s.description.startsWith("confirm ")).length; // a rerun on one commit counts too
       continue;
@@ -354,8 +360,7 @@ export function verdictOf(dir: string, pr: Pr, local: boolean, proof = proofOf(d
   if (proof.state !== "success" || verdict === "rework needed") return { state: "failure", why: "the latest review did not pass" };
   if (proof.baseRef !== pr.baseRefName || full.baseRef !== pr.baseRefName) return { state: "pending", why: "the PR was retargeted; run review.ts again" };
   // The policy binds the full review and any confirm after it: a confirm judges fixes of any size (gate.md).
-  const below = (r: { model: string; effort: string }) => !policy!.models.includes(r.model) || EFFORTS.indexOf(r.effort) < EFFORTS.indexOf(policy!.effort);
-  if (policy && (below(full) || below(proof))) {
+  if (!meets(policy, full)) { // a confirm below the policy was already skipped by proofOf
     return { state: "failure", why: "reviewer model or effort does not meet the base policy" };
   }
   if (reviewed !== pr.headRefOid && !(local && carries(dir, reviewed, pr.headRefOid, pr.baseRefOid))) {

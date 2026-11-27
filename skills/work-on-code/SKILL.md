@@ -216,8 +216,9 @@ request or a related cleanup.
 1. **Push; the repo's pre-push hook is the check.** Never run the check, then push the same tree again (a passing
    check records its tree hash, the hook skips a matching tree). Merge main only at landing (step 6) or on a real
    conflict, never mid-review. While iterating, run only the changed tests when the runner supports it.
-2. **Run a fresh verdict** from the clean, pushed PR checkout:
-   `bun ~/.agents/skills/work-on-code/review.ts <pr> <codex|claude> <model> [effort]`.
+2. **Run a fresh verdict** on the clean, pushed PR checkout:
+   `cd ~ && bun ~/.agents/skills/work-on-code/review.ts <checkout> <pr> <codex|claude> <model> [effort]` (from outside
+   the checkout, so the PR's own Bun config never runs).
    Use the tier's rank and meet the base branch's reviewer policy. The wrapper posts the verdict on the reviewed sha.
 3. **Act on the report.** **Do it**: fix on the branch. **Rework**: do it in this PR when it is the change's own
    foundation, or open it now as its own task or PR with a complete brief; say which, per item, never as a line of

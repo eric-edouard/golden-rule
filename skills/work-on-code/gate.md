@@ -31,7 +31,7 @@ It refuses:
 - a plan (Claude's ExitPlanMode; Codex has no plan tool) with no `## Debt plan` section.
 - every `gh pr merge` missing `--match-head-commit <full current head sha>`, and merges through `gh api`.
 - a code merge behind its base or without a passing `debt-verdict` status for that base ref.
-- a hand-posted `debt-verdict` through `gh api …/statuses/…`. Run `review.ts` from the clean, pushed head.
+- a hand-posted `debt-verdict` through `gh api …/statuses/…`. Run `review.ts` on the clean, pushed head, started outside the checkout.
 - `git push` of code to the repository's default branch: an explicit refspec, `HEAD`, `--all`, `--mirror`, or a bare
   push from that branch.
 

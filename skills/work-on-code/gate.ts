@@ -133,7 +133,7 @@ export function defaults(dir: string, remote = "origin") {
 const DOC = /\.(md|mdx|txt|csv|jsonl|log)$/;
 const DATA_DIR = /^(docs|memory|data|reports)\//;
 const SCRIPT = /\.(ts|tsx|js|jsx|mjs|cjs|py|sh|rb|go|rs|swift|kt|sql)$/;
-const INSTRUCTIONS = /(^|\/)(AGENTS|CLAUDE|SKILL)\.md$|(^|\/)(prompts|\.claude|\.agents|\.cursor)\/|(^|\/)docs\/agents\//;
+const INSTRUCTIONS = /(^|\/)(AGENTS|CLAUDE|SKILL)\.md$|(^|\/)(prompts|skills|\.claude|\.agents|\.cursor)\/|(^|\/)docs\/agents\//;
 export const isData = (path: string, inDataRepo = false) =>
   path !== ".work-on-code.json" && !INSTRUCTIONS.test(path) && (DOC.test(path) || ((inDataRepo || DATA_DIR.test(path)) && !SCRIPT.test(path)));
 
@@ -271,10 +271,11 @@ const VALUED = new Set([
 ]);
 
 /** A PR as `gh pr view --json PR_FIELDS` gives it. */
-export type Pr = { baseRefName: string; baseRefOid: string; changedFiles: number; files: { path: string }[]; headRefOid: string; url: string };
-export const PR_FIELDS = "baseRefName,baseRefOid,changedFiles,files,headRefOid,url";
+export type Pr = { baseRefName: string; baseRefOid: string; headRefOid: string; url: string };
+export const PR_FIELDS = "baseRefName,baseRefOid,headRefOid,url";
 export const repoOf = (pr: Pick<Pr, "url">) => pr.url.replace(/^https:\/\/github\.com\//, "").replace(/\/pull\/\d+$/, "");
 
+const MAX_WALK = 20;
 export const EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 const VERDICTS = ["debt reduced", "no debt added", "debt added", "rework needed"];
 export function reportVerdict(report: string) {
@@ -292,28 +293,23 @@ type Status = { context: string; creator: { login: string }; state: string; desc
 const names = (v: unknown): v is string[] =>
   Array.isArray(v) && v.length > 0 && v.every(x => typeof x === "string" && x.length > 0);
 
-/** Read immutable base and head snapshots. Only an absent tree entry means no policy. */
+/** The trusted review nearest the head, or null for a docs-and-data PR. Only an absent tree entry means no policy. */
 export function proofOf(dir: string, pr: Pr) {
   const api = (endpoint: string, ...args: string[]) => {
     const result = run(dir, ["gh", "api", `repos/${repoOf(pr)}/${endpoint}`, ...args]);
     if (result === null) throw new Error(`cannot read ${endpoint} on GitHub`);
     return result;
   };
-  function rootTree(sha: string): { path: string; sha: string; mode: string }[] {
-    const root = JSON.parse(api(`git/trees/${sha}`));
-    if (root.truncated !== false) throw new Error("cannot read the complete policy tree");
-    return root.tree;
-  }
-  const root = rootTree(pr.baseRefOid);
+  const root = JSON.parse(api(`git/trees/${pr.baseRefOid}`));
+  if (root.truncated !== false) throw new Error("cannot read the complete policy tree");
   const policyPath = ".work-on-code.json";
-  const file = root.find(entry => entry.path === policyPath);
-  const data = root.some(entry => entry.path === ".data-repo");
-  if (pr.files.length && pr.files.length === pr.changedFiles && pr.files.every(f => isData(f.path, data))) {
-    // The PR file list names only the destination of a rename. Moving the policy into data still needs review.
-    if (!file || rootTree(pr.headRefOid).some(entry => entry.path === policyPath && entry.sha === file.sha && entry.mode === file.mode)) {
-      return null;
-    }
-  }
+  const file = (root.tree as { path: string; mode: string }[]).find(entry => entry.path === policyPath);
+  const data = root.tree.some((entry: { path: string }) => entry.path === ".data-repo");
+  // One compare read gives both sides of every rename and each commit's parents.
+  type Compare = { commits: { sha: string; parents: { sha: string }[] }[]; files?: { filename: string; previous_filename?: string }[] };
+  const diff: Compare = JSON.parse(api(`compare/${pr.baseRefOid}...${pr.headRefOid}?per_page=100`));
+  const paths = (diff.files ?? []).flatMap(f => f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]);
+  if (paths.length && (diff.files ?? []).length < 300 && paths.every(path => isData(path, data))) return null;
   let policy: Policy | undefined;
   if (file) {
     if (!["100644", "100755"].includes(file.mode)) throw new Error("the reviewer policy must be a regular file");
@@ -323,12 +319,10 @@ export function proofOf(dir: string, pr: Pr) {
   }
   const publishers = policy?.publishers ?? [run(dir, ["gh", "api", "user", "-q", ".login"])];
   if (!publishers[0]) throw new Error("cannot identify the gate's GitHub login");
-  const compare = `compare/${pr.baseRefOid}...${pr.headRefOid}`;
+  // The nearest review by first-parent distance, at most MAX_WALK commits back, so the hook stays inside its timeout.
+  const parent = new Map(diff.commits.map(c => [c.sha, c.parents[0]?.sha]));
   function* candidates() {
-    yield pr.headRefOid;
-    for (const sha of api(`${compare}?per_page=100`, "--paginate", "-q", ".commits[].sha").split("\n").reverse()) {
-      if (sha && sha !== pr.headRefOid) yield sha;
-    }
+    for (let sha: string | undefined = pr.headRefOid, steps = 0; sha && steps < MAX_WALK; sha = parent.get(sha), steps++) yield sha;
   }
   for (const reviewed of candidates()) {
     const pages: Status[][] = JSON.parse(api(`commits/${reviewed}/statuses?per_page=100`, "--paginate", "--slurp"));

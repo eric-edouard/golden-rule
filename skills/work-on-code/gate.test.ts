@@ -360,13 +360,15 @@ const status = {
 };
 const bin = mkdtempSync(join(root, "bin-"));
 writeFileSync(join(bin, "gh"), `#!/bin/sh
+remote() {
+  if [ -n "$REMOTE" ]; then
+    printf '%s' "$1" | sed "s/REMOTE_HEAD/$(git --git-dir="$REMOTE" rev-parse pr)/g;s/REMOTE_BASE/$(git --git-dir="$REMOTE" rev-parse main)/g"
+  else
+    printf '%s' "$1"
+  fi
+}
 case "$1 $2" in
-  'pr view')
-    if [ -n "$REMOTE" ]; then
-      printf '%s' "$PR_VIEW" | sed "s/REMOTE_HEAD/$(git --git-dir="$REMOTE" rev-parse pr)/g;s/REMOTE_BASE/$(git --git-dir="$REMOTE" rev-parse main)/g"
-    else
-      printf '%s' "$PR_VIEW"
-    fi;;
+  'pr view') remote "$PR_VIEW";;
   'pr merge') exit 0;;
   'api user') echo reviewer;;
   *git/trees/${headSha}) if [ -n "$HEAD_TREE" ]; then echo "$HEAD_TREE"; else echo "$TREE"; fi;;
@@ -374,24 +376,26 @@ case "$1 $2" in
   *contents/.work-on-code.json*) [ -n "$POLICY" ] && echo "$POLICY";;
   *commits/"$REVIEWED"/statuses*) echo "$STATUSES";;
   *commits/*/statuses*) echo "$OTHER_STATUSES";;
-  *compare/*per_page*) echo "$REVIEWED";;
+  *compare/*per_page*) remote "$COMPARE";;
   *compare/*) echo "$BEHIND";;
   *statuses/*) echo "$@" > "$POSTED";;
   *) exit 1;;
 esac
 `, { mode: 0o755 });
-function fakeGh(extra: Record<string, string> = {}) {
+// The PR's commits as GitHub's compare gives them: head, then its first parents.
+const chain = (...shas: string[]) => shas.map((sha, i) => ({ sha, parents: shas[i + 1] ? [{ sha: shas[i + 1] }] : [] }));
+function fakeGh(extra: Record<string, string> = {}, files: object[] = [{ filename: "shared.ts" }]) {
   return {
     HOME: process.env.HOME, PATH: `${bin}:${process.env.PATH}`, TMPDIR: root, PR_VIEW: JSON.stringify(prView),
     REVIEWED: headSha, STATUSES: JSON.stringify([[status]]), OTHER_STATUSES: "[[]]", BEHIND: "0",
-    TREE: '{"truncated":false,"tree":[]}', ...extra,
+    TREE: '{"truncated":false,"tree":[]}', COMPARE: JSON.stringify({ commits: chain(headSha, ancestor), files }), ...extra,
   };
 }
 
 test("only the nearest trusted verdict authorizes its pinned head", () => {
   const pinned = `gh pr merge 7 --match-head-commit ${headSha}`;
-  const merge = (extra: Record<string, string>, command = pinned) => Bun.spawnSync(["bun", GATE], {
-    env: fakeGh(extra), stdin: new TextEncoder().encode(JSON.stringify({ cwd: FEATURE, tool_input: { command } })),
+  const merge = (extra: Record<string, string>, command = pinned, files?: object[]) => Bun.spawnSync(["bun", GATE], {
+    env: fakeGh(extra, files), stdin: new TextEncoder().encode(JSON.stringify({ cwd: FEATURE, tool_input: { command } })),
   }).exitCode;
   const failed = { ...status, state: "failure", description: status.description.replace("no debt added", "rework needed"), id: 2 };
   const strict = {
@@ -413,14 +417,23 @@ test("only the nearest trusted verdict authorizes its pinned head", () => {
   expect(merge({ BEHIND: "1" })).toBe(2);
   expect(merge({}, "gh pr merge 7")).toBe(2);
   expect(merge({}, pinned.slice(0, -1))).toBe(2);
-  const docs = { PR_VIEW: JSON.stringify({ ...prView, files: [{ path: "README.md" }] }), STATUSES: "[[]]" };
-  expect(merge(docs)).toBe(0);
-  expect(merge({ ...docs, ...strict })).toBe(0);
-  expect(merge({ ...docs, ...strict, HEAD_TREE: '{"truncated":false,"tree":[]}' })).toBe(2); // policy renamed into docs
-  expect(merge(docs, "gh pr merge 7")).toBe(2);
+  const docs = { STATUSES: "[[]]" };
+  const readme = [{ filename: "README.md" }];
+  expect(merge(docs, pinned, readme)).toBe(0);
+  expect(merge({ ...docs, ...strict }, pinned, readme)).toBe(0);
+  expect(merge(docs, pinned, [{ filename: "notes.md", previous_filename: ".work-on-code.json" }])).toBe(2); // policy renamed into docs
+  expect(merge(docs, pinned, [{ filename: "docs/old.md", previous_filename: "tool.ts" }])).toBe(2); // script renamed into docs
+  expect(merge(docs, pinned, [{ filename: "skills/x/verdict-review.md" }])).toBe(2); // reviewer prompts are instructions
+  expect(merge(docs, "gh pr merge 7", readme)).toBe(2);
   expect(merge({ REVIEWED: ancestor })).toBe(0);
   expect(merge({ REVIEWED: ancestor, OTHER_STATUSES: JSON.stringify([[failed]]) })).toBe(2);
   expect(merge({ ...strict, REVIEWED: ancestor })).toBe(2);
+  // Only first parents count, and only MAX_WALK of them: the hook must stay inside its timeout.
+  const side = "d".repeat(40);
+  const merged = [{ sha: headSha, parents: [{ sha: ancestor }, { sha: side }] }, { sha: ancestor, parents: [] }, { sha: side, parents: [] }];
+  expect(merge({ REVIEWED: side, COMPARE: JSON.stringify({ commits: merged, files: [{ filename: "shared.ts" }] }) })).toBe(2);
+  const long = Array.from({ length: 25 }, (_, i) => i.toString(16).padStart(40, "e"));
+  expect(merge({ REVIEWED: long[22]!, COMPARE: JSON.stringify({ commits: chain(headSha, ...long), files: [{ filename: "shared.ts" }] }) })).toBe(2);
 }, 30_000);
 
 test("review.ts posts a full report's verdict on the pushed commit only", () => {
@@ -447,12 +460,13 @@ const hook = Bun.spawnSync(["sh", "-c", stop.command], { env: { ...process.env, 
 if (hook.exitCode !== 0) process.exit(2);
 console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", modelUsage: { "claude-opus-5-5": {} } }));
 `, { mode: 0o755 });
-  const review = (pushed = head, cli = "codex", model = "gpt-review") => Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), "7", cli, model], {
-    cwd: dir, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: pushed }), POSTED: posted }),
+  const review = (pushed = head, cli = "codex", model = "gpt-review") => Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", cli, model], {
+    cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: pushed }), POSTED: posted }),
   });
   writeFileSync(report, "Plan: matched\nVerdict: debt reduced\nNet lines: +1 / −2\n");
   expect(review().exitCode).toBe(0);
   expect(readFileSync(posted, "utf8")).toContain(`statuses/${head}`);
+  expect(readFileSync(args, "utf8")).toContain("mcp_servers={}");
   expect(readFileSync(posted, "utf8")).toContain("state=success");
   expect(readFileSync(posted, "utf8")).toContain(`debt reduced | gpt-review high | main@${base}`);
   expect(readFileSync(args, "utf8")).toContain("read-only");
@@ -469,6 +483,7 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   }
   writeFileSync(report, "Verdict: debt reduced");
   expect(review(base).exitCode).not.toBe(0);
+  expect(Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "codex", "gpt-review"], { cwd: dir, env: fakeGh() }).exitCode).not.toBe(0); // started inside the checkout
   writeFileSync(join(dir, "dirty"), "unreviewed");
   expect(review().exitCode).not.toBe(0);
   expect(existsSync(posted)).toBe(false);
@@ -492,6 +507,7 @@ test("land.ts lands only from the PR's branch, and asks for a base round when th
     REMOTE: join(root, "origin.git"), REVIEWED: reviewed,
     STATUSES: JSON.stringify([[{ ...status, description: status.description.replace(baseSha, oldBase) }]]),
     PR_VIEW: JSON.stringify({ ...prView, headRefOid: "REMOTE_HEAD", baseRefOid: "REMOTE_BASE" }),
+    COMPARE: JSON.stringify({ commits: chain("REMOTE_HEAD", reviewed), files: [{ filename: "shared.ts" }] }),
   });
   const land = (cwd: string, extra: Record<string, string> = {}) =>
     Bun.spawnSync(["bun", LAND, "7"], { cwd, env: { ...env, ...extra } });

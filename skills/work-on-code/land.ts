@@ -64,8 +64,8 @@ if (state !== "success") {
 }
 if (proof && proof.baseSha !== pushed.baseRefOid && process.env.LAND_BASE_CHECKED !== pushed.baseRefOid) {
   const range = `${proof.baseSha}..${pushed.baseRefOid}`;
-  const files = pushed.files.map(f => f.path);
-  if (pushed.changedFiles !== files.length) fail("cannot list all PR files for the base round");
+  const files = run(dir, ["git", "diff", "--name-only", "--no-renames", `${proof.baseSha}...${head}`])?.split("\n").filter(Boolean);
+  if (!files) fail("cannot list the PR files for the base round");
   const moved = run(dir, ["git", "diff", "--name-only", range, "--", ...files]);
   if (moved === null) fail(`cannot read the base diff ${range}`);
   if (moved) fail(`${base} changed PR ${pr}'s files: base round on git diff ${range} -- <the PR's files>; then LAND_BASE_CHECKED=${pushed.baseRefOid}\n${moved}`, 3);

@@ -1,18 +1,21 @@
 #!/usr/bin/env bun
 // Run a full review from the pushed checkout. Only the wrapper writes the verdict status.
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CODEX_ENV_FLAGS, EFFORTS, type Pr, repoOf, reportVerdict, run } from "./gate";
 
 async function review() {
-  const [number, cli, model, effort, ...extra] = process.argv.slice(2);
-  if (!/^\d+$/.test(number ?? "") || !["codex", "claude"].includes(cli ?? "") ||
+  const [checkout, number, cli, model, effort, ...extra] = process.argv.slice(2);
+  if (!checkout || !/^\d+$/.test(number ?? "") || !["codex", "claude"].includes(cli ?? "") ||
       !model || !/^[\w][\w./:[\]-]*$/.test(model) || (effort !== undefined && !EFFORTS.includes(effort)) || extra.length) {
-    throw new Error("usage: bun review.ts <pr> <codex|claude> <model> [effort]");
+    throw new Error("usage: bun review.ts <checkout> <pr> <codex|claude> <model> [effort], started outside the checkout");
   }
-  const dir = run(process.cwd(), ["git", "rev-parse", "--show-toplevel"]);
+  const dir = run(checkout, ["git", "rev-parse", "--show-toplevel"]);
   if (!dir) throw new Error("review needs a git checkout");
+  // Bun reads bunfig.toml (preloads) from its working directory: a PR must not run code before this check.
+  const cwd = realpathSync(process.cwd());
+  if (cwd === dir || cwd.startsWith(`${dir}/`)) throw new Error("start review.ts outside the checkout it reviews");
   const view = () => {
     const raw = run(dir, ["gh", "pr", "view", number!, "--json", "url,headRefOid,baseRefOid,baseRefName,body"]);
     if (!raw) throw new Error("cannot read the PR");
@@ -25,7 +28,10 @@ async function review() {
     }
   };
   checkHead();
-  const range = `${pr.baseRefOid}...${pr.headRefOid}`;
+  // The reviewer sees the diff from the merge base: record that as the reviewed base, so landing checks everything after it.
+  const mergeBase = run(dir, ["git", "merge-base", pr.baseRefOid, pr.headRefOid]);
+  if (!mergeBase) throw new Error("cannot find the merge base; fetch the base before reviewing");
+  const range = `${mergeBase}..${pr.headRefOid}`;
   const diff = run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", range]);
   if (diff === null) throw new Error(`cannot read ${range}; fetch the base before reviewing`);
   const plan = pr.body?.split(/^## Debt plan[ \t]*\r?$/m)[1]?.split(/^## /m)[0]?.trim() || "(no plan)";
@@ -42,7 +48,7 @@ async function review() {
          "--restricted", "--strict-mcp-config", "--tools", "Read,Grep,Glob", "--output-format", "json",
          "--settings", JSON.stringify({ hooks: { Stop: [{ hooks: [stop] }] } })]
       : ["codex", "exec", "--model", model, "-s", "read-only", "--ephemeral", "--color", "never",
-         ...CODEX_ENV_FLAGS.flatMap(([key, values]) => ["-c", `${key}=${values[0]}`]),
+         ...CODEX_ENV_FLAGS.flatMap(([key, values]) => ["-c", `${key}=${values[0]}`]), "-c", "mcp_servers={}",
          ...(effort ? ["-c", `model_reasoning_effort="${effort}"`] : []), "-"];
     const proc = Bun.spawnSync(cmd, { cwd: dir, stdin: Buffer.from(prompt), stdout: "pipe", stderr: "pipe",
       env: { ...process.env, REVIEW_EFFORT_FILE: effortFile }, maxBuffer: 64 * 1024 * 1024 });
@@ -73,7 +79,8 @@ async function review() {
     if (pr.headRefOid !== after.headRefOid || pr.baseRefName !== after.baseRefName || pr.baseRefOid !== after.baseRefOid) {
       throw new Error("PR head or base moved during review; rerun review.ts");
     }
-    const description = `${verdict} | ${usedModel} ${usedEffort} | ${pr.baseRefName}@${pr.baseRefOid}`;
+    const description = `${verdict} | ${usedModel} ${usedEffort} | ${pr.baseRefName}@${mergeBase}`;
+    if (description.length > 140) throw new Error("debt-verdict status is over GitHub's 140 characters (base branch name too long)");
     const state = verdict === "rework needed" ? "failure" : "success";
     if (run(dir, ["gh", "api", `repos/${repoOf(pr)}/statuses/${pr.headRefOid}`, "-f", "context=debt-verdict",
       "-f", `state=${state}`, "-f", `description=${description}`]) === null) throw new Error("could not post debt-verdict status");

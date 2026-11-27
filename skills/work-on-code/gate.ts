@@ -336,9 +336,10 @@ export function proofOf(dir: string, pr: Pr) {
     const [, confirm, verdict = "", model = "", effort = "", baseRef = "", baseSha = ""] = fields;
     if (!VERDICTS.includes(verdict) || !EFFORTS.includes(effort)) throw new Error("unknown verdict or effort");
     const review = { reviewed, verdict, model, effort, baseRef, baseSha, state: status.state, confirm: !!confirm };
-    // A confirm review saw only the fixes since the nearest full review behind it: both make the proof.
+    // A confirm review saw only the fixes since the nearest full review behind it: both make the proof, and the base
+    // round starts from the full review's base (the confirm never saw what a base merge brought in).
     if (!nearest && review.confirm) nearest = review;
-    else if (!review.confirm) return { ...(nearest ?? review), policy, full: review };
+    else if (!review.confirm) return { ...(nearest ?? review), baseSha: review.baseSha, policy, full: review };
   }
   throw new Error(`${pr.url} has no trusted full debt-verdict status${nearest ? " behind its confirm" : ""}. Run review.ts on its pushed head.`);
 }

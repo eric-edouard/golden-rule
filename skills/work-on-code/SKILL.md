@@ -224,9 +224,8 @@ request or a related cleanup.
    foundation, or open it now as its own task or PR with a complete brief; say which, per item, never as a line of
    prose. **Kept on purpose**: only with a reason the user would accept. A finding is evidence, not an order (above all
    from another CLI): check it against the code before acting; a claim about behavior needs a reachable input.
-4. **After a fix**, push and rerun step 2. Mechanical fixes (a rename, a one-line guard, a test, a doc line, the
-   fix of a reported item; at most 60 changed lines since the last full review) take a confirm review instead, on the
-   intern rank at low effort, whatever the repo's reviewer policy: `cd ~ && bun ~/.agents/skills/work-on-code/review.ts
+4. **After a fix**, push and rerun step 2. Mechanical fixes (`verdict-confirm.md` says which; at most 60 changed
+   lines since the last full review) take a confirm review instead, on the intern rank at low effort, whatever the repo's reviewer policy: `cd ~ && bun ~/.agents/skills/work-on-code/review.ts
    <checkout> <pr> confirm <codex|claude> <model> low`. It reads the full review's report (kept by `review.ts` on this
    machine) and the fixes alone; `rework needed` from it means a full review. List each fix below.
    Track `Later` findings in one `debt` issue.

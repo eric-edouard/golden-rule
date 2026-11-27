@@ -375,6 +375,7 @@ case "$1 $2" in
   *git/trees/*) echo "$TREE";;
   *contents/.work-on-code.json*) [ -n "$POLICY" ] && echo "$POLICY";;
   *commits/"$REVIEWED"/statuses*) echo "$STATUSES";;
+  *commits/"$FULL"/statuses*) echo "$FULL_STATUSES";;
   *commits/*/statuses*) echo "$OTHER_STATUSES";;
   *compare/*per_page*) remote "$COMPARE";;
   *compare/*) echo "$BEHIND";;
@@ -507,6 +508,12 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
     cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: pushed }), POSTED: posted,
       REVIEWED: head, COMPARE: JSON.stringify({ commits: chain(pushed, ...parents, head), files: [{ filename: "shared.ts" }] }) }),
   });
+  const saved = join(dir, ".git", "work-on-code", `${head}.md`);
+  writeFileSync(report, "Verdict: no debt added\nunposted");
+  expect(Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "codex", "gpt-review"], {
+    cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: head }), POSTED: join(root, "none", "x") }),
+  }).exitCode).not.toBe(0); // the post fails: the saved report stays the posted one
+  expect(readFileSync(saved, "utf8")).toBe("Verdict: debt reduced");
   unlinkSync(posted);
   const fix = commit("echo fix >> shared.ts");
   writeFileSync(report, "Verdict: no debt added");
@@ -546,7 +553,7 @@ test("land.ts lands only from the PR's branch, and asks for a base round when th
   const fixed = rev();
   const full = { ...status, description: status.description.replace(baseSha, oldBase) };
   const env = fakeGh({
-    REMOTE: join(root, "origin.git"), REVIEWED: fixed, OTHER_STATUSES: JSON.stringify([[full]]),
+    REMOTE: join(root, "origin.git"), REVIEWED: fixed, FULL: reviewed, FULL_STATUSES: JSON.stringify([[full]]),
     STATUSES: JSON.stringify([[{ ...full, description: `confirm ${full.description}` }]]),
     PR_VIEW: JSON.stringify({ ...prView, headRefOid: "REMOTE_HEAD", baseRefOid: "REMOTE_BASE" }),
     COMPARE: JSON.stringify({ commits: chain("REMOTE_HEAD", fixed, reviewed), files: [{ filename: "shared.ts" }] }),
@@ -566,4 +573,8 @@ test("land.ts lands only from the PR's branch, and asks for a base round when th
   sh(base2, "sed -i.bak 9s/9/nine/ shared.ts && rm shared.ts.bak && git add shared.ts");
   c(base2, "commit -q -m again && git push -q --no-verify origin main");
   expect(land(dir, { LAND_BASE_CHECKED: base }).exitCode).toBe(3); // the base moved again: asked again
+  // A confirm naming a newer base never skips the base round from the full review's base.
+  const latest = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: base2 }).stdout.toString().trim();
+  const newer = JSON.stringify([[{ ...full, description: `confirm ${full.description.replace(oldBase, latest)}` }]]);
+  expect(land(dir, { STATUSES: newer, REVIEWED: rev() }).exitCode).toBe(3);
 }, 30_000);

@@ -73,10 +73,6 @@ async function review() {
     }
     console.log(report);
     const verdict = reportVerdict(report);
-    if (!confirm) {
-      mkdirSync(reports, { recursive: true });
-      await Bun.write(join(reports, `${pr.headRefOid}.md`), report);
-    }
     if (!usedModel || !/^\S+$/.test(usedModel) || !usedEffort || !EFFORTS.includes(usedEffort)) {
       throw new Error("reviewer did not report its effective model and effort");
     }
@@ -90,6 +86,11 @@ async function review() {
     const state = verdict === "rework needed" ? "failure" : "success";
     if (run(dir, ["gh", "api", `repos/${repoOf(pr)}/statuses/${pr.headRefOid}`, "-f", "context=debt-verdict",
       "-f", `state=${state}`, "-f", `description=${description}`]) === null) throw new Error("could not post debt-verdict status");
+    // Kept only once posted, so the report a confirm reads is the one the gate trusts.
+    if (!confirm) {
+      mkdirSync(reports, { recursive: true });
+      await Bun.write(join(reports, `${pr.headRefOid}.md`), report);
+    }
     if (state === "failure") process.exitCode = 1;
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -110,6 +111,7 @@ async function fullPrompt(dir: string, pr: Pr & { body: string }, mergeBase: str
 async function confirmPrompt(dir: string, pr: Pr, mergeBase: string, reports: string) {
   const proof = proofOf(dir, pr);
   if (!proof) throw new Error("a docs-and-data PR needs no review");
+  if (proof.confirm && proof.state !== "success") throw new Error("the last confirm did not pass; run a full review");
   const full = proof.full.reviewed;
   const report = Bun.file(join(reports, `${full}.md`));
   if (!(await report.exists())) throw new Error(`the full review of ${full} is not on this machine; run a full review`);
@@ -123,6 +125,7 @@ async function confirmPrompt(dir: string, pr: Pr, mergeBase: string, reports: st
   }, 0);
   if (lines > CONFIRM_MAX) throw new Error(`the fixes since ${full} change ${lines} lines, over ${CONFIRM_MAX}; run a full review`);
   const diff = run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", from, pr.headRefOid]);
+  if (diff === null) throw new Error(`cannot read the fixes since ${full}`);
   const instructions = await Bun.file(join(import.meta.dir, "verdict-confirm.md")).text();
   return `${instructions}\n\nEarlier full review of ${full}:\n${await report.text()}\n\nFixes since then:\n${diff}`;
 }

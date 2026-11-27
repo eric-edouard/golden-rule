@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Run a review from the pushed checkout. Only the wrapper writes the verdict status.
-// Full: the PR's whole diff. Confirm: only the fixes since the nearest full review, when they are small (gate.md).
+// Full: the PR's whole diff. Confirm: only the fixes since the nearest full review, at most two confirms (gate.md).
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -111,7 +111,7 @@ async function fullPrompt(dir: string, pr: Pr & { body: string }, mergeBase: str
 async function confirmPrompt(dir: string, pr: Pr, mergeBase: string, reports: string) {
   const proof = proofOf(dir, pr);
   if (!proof) throw new Error("a docs-and-data PR needs no review");
-  if (proof.confirms >= MAX_CONFIRMS) throw new Error(`${MAX_CONFIRMS} confirm rounds already ran after the full review: the loop stops; write what is left into the verdict as debt added, a rework or kept on purpose`);
+  if (proof.confirms >= MAX_CONFIRMS) throw new Error(`${MAX_CONFIRMS} confirm rounds already ran after the full review: the loop stops; what is still Blocking is rework needed: split it into a rework PR or ask the user`);
   const fullSha = proof.full.reviewed;
   const report = Bun.file(join(reports, `${fullSha}.md`));
   if (!(await report.exists())) throw new Error(`the full review of ${fullSha} is not on this machine; run a full review`);

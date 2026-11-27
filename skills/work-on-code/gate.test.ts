@@ -429,10 +429,13 @@ test("only the nearest trusted verdict authorizes its pinned head", () => {
   // A verdict of an older commit holds for no head, policy or not: the fixes after it need a confirm review.
   expect(merge({ REVIEWED: ancestor })).toBe(2);
   expect(merge({ ...strict, REVIEWED: ancestor })).toBe(2);
-  // A confirm on the head stands on the nearest full review behind it, which alone must meet the policy.
-  const confirmed = { ...status, description: `confirm no debt added | claude-haiku low | main@${baseSha}`, id: 3 };
+  // A confirm on the head stands on the nearest full review behind it; a policy binds both.
+  const confirmed = { ...status, description: `confirm no debt added | claude-opus-5-5 medium | main@${baseSha}`, id: 3 };
   const full = (s: object) => ({ STATUSES: JSON.stringify([[confirmed]]), OTHER_STATUSES: JSON.stringify([[s]]) });
   expect(merge({ ...strict, ...full(status) })).toBe(0);
+  const cheap = { ...confirmed, description: confirmed.description.replace("claude-opus-5-5 medium", "claude-haiku low") };
+  expect(merge({ ...full(status), STATUSES: JSON.stringify([[cheap]]) })).toBe(0); // no policy: any confirm model
+  expect(merge({ ...strict, ...full(status), STATUSES: JSON.stringify([[cheap]]) })).toBe(2); // policy: the confirm meets it too
   expect(merge({ ...strict, ...full(failed) })).toBe(0); // the confirm says its Blocking items are fixed
   expect(merge({ ...strict, ...full(confirmed) })).toBe(2); // confirms only, no full review
   expect(merge({ ...strict, ...full({ ...status, description: status.description.replace("medium", "low") }) })).toBe(2);

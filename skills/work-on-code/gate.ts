@@ -353,8 +353,9 @@ export function verdictOf(dir: string, pr: Pr, local: boolean, proof = proofOf(d
   const { reviewed, verdict, policy, full } = proof;
   if (proof.state !== "success" || verdict === "rework needed") return { state: "failure", why: "the latest review did not pass" };
   if (proof.baseRef !== pr.baseRefName || full.baseRef !== pr.baseRefName) return { state: "pending", why: "the PR was retargeted; run review.ts again" };
-  // The policy binds the full review; a confirm after it may run on any model (gate.md).
-  if (policy && (!policy.models.includes(full.model) || EFFORTS.indexOf(full.effort) < EFFORTS.indexOf(policy.effort))) {
+  // The policy binds the full review and any confirm after it: a confirm judges fixes of any size (gate.md).
+  const below = (r: { model: string; effort: string }) => !policy!.models.includes(r.model) || EFFORTS.indexOf(r.effort) < EFFORTS.indexOf(policy!.effort);
+  if (policy && (below(full) || below(proof))) {
     return { state: "failure", why: "reviewer model or effort does not meet the base policy" };
   }
   if (reviewed !== pr.headRefOid && !(local && carries(dir, reviewed, pr.headRefOid, pr.baseRefOid))) {

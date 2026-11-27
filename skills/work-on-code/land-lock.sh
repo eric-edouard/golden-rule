@@ -2,6 +2,7 @@
 # The landing lock (work-on-code, verdict step 6): one PR lands at a time per repository and area, all worktrees included.
 #   land-lock.sh take [area...]   wait for each area's lock (none: the whole repo's), in sorted order, then hold them for this branch
 #   land-lock.sh drop [area...]   release them (only the branch holding a lock can)
+#   land-lock.sh holds            exit 0 when this branch holds a live lock of this repo (any area): it is landing
 # LAND_LOCK_PID (land.ts passes its own) is kept beside the branch: once that process is gone, the lock is taken over at
 # once. Any lock older than LAND_LOCK_STALE minutes (default 90) was abandoned and is taken over. The lock only saves wasted
 # catch-ups: the gate's behind-base check keeps a landing correct, except that PRs of different areas may merge without
@@ -43,8 +44,18 @@ drop() {
   [ "$(holder)" = "$me" ] || { echo "land-lock: held by $(holder), not $me" >&2; failed=1; return 0; }
   rm -rf "$lock"
 }
+if [ "$op" = holds ]; then
+  for lock in "$repo" "$repo"-*; do
+    [ "$(holder)" = "$me" ] || continue
+    pid=$(cat "$lock/pid" 2>/dev/null || true)
+    { [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; } && continue # its landing process is gone
+    [ -n "$(find "$lock" -maxdepth 0 -mmin "+${LAND_LOCK_STALE:-90}" 2>/dev/null)" ] && continue # abandoned
+    exit 0
+  done
+  exit 1
+fi
 failed=0
-case "$op" in take | drop) ;; *) echo "usage: land-lock.sh take|drop [area...]" >&2; exit 2 ;; esac
+case "$op" in take | drop) ;; *) echo "usage: land-lock.sh take|drop [area...] | holds" >&2; exit 2 ;; esac
 # Sorted, so two branches spanning the same areas never wait on each other in a cycle; no area is the whole repo.
 for area in $(printf '%s\n' "$@" | tr 'A-Z' 'a-z' | LC_ALL=C sort -u); do
   lock="$repo-$area"

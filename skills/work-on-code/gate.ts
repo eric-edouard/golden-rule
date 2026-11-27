@@ -4,7 +4,6 @@
 // stdin and refuses (exit 2, the reason on stderr) a plan with no debt plan section, a merge whose PR carries no
 // passing debt verdict of its current head, and a push of code to a repository's default branch (a data-only
 // push, a job's report or log, goes through). Every other call passes untouched. The proof trusts its publisher. Anyone with that token can script a status.
-import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /** A command's output, or null when it fails or cannot start (e.g. a folder an earlier part of the command creates). */
@@ -494,20 +493,6 @@ export function gitCall(w: string[], cwd: string) {
 }
 
 /** A branch merges its base only at landing (land.ts) or on a real conflict: each early merge costs a full check. */
-/** Whether `branch` holds one of this repo's landing locks (named as land-lock.sh names them), the one time it merges its base. */
-function landing(dir: string, branch: string) {
-  const tmp = process.env.TMPDIR ?? "/tmp";
-  const repo = run(dir, ["sh", "-c", 'printf %s "$(git rev-parse --path-format=absolute --git-common-dir)" | cksum'])?.split(" ")[0];
-  return !!repo && [...new Bun.Glob(`work-on-code-land-${repo}{,-*}/branch`).scanSync({ cwd: tmp, onlyFiles: true })]
-    .some((f) => {
-      try {
-        return readFileSync(join(tmp, f), "utf8").trim() === branch;
-      } catch {
-        return false; // released while we looked
-      }
-    });
-}
-
 function checkBaseMerge(dir: string, args: string[]) {
   // Words that are not options or option values (`-m <msg>`, `-s <strategy>`…), so a message never reads as a target.
   const words = args.filter((a, i) => !a.startsWith("-") && !/^-[mFsX]$|^--(message|file|strategy|strategy-option)$/.test(args[i - 1] ?? ""));
@@ -515,12 +500,13 @@ function checkBaseMerge(dir: string, args: string[]) {
   const bases = defaults(dir);
   const base = bases.find((b) => (sub === "merge" ? rest.includes(`origin/${b}`) : rest[0] === "origin" && rest[1] === b));
   const branch = run(dir, ["git", "branch", "--show-current"]);
-  if (!base || !branch || bases.includes(branch) || landing(dir, branch)) {
+  // A branch holding this repo's landing lock is landing: the one time it merges its base.
+  if (!base || !branch || bases.includes(branch) ||
+      Bun.spawnSync(["sh", join(import.meta.dir, "land-lock.sh"), "holds"], { cwd: dir }).exitCode === 0) {
     return;
   }
-  // A pull fetches first, so check what it would fetch; a merge takes the local ref as it is. No fetch: let it through.
-  if (sub === "pull" && run(dir, ["git", "fetch", "-q", "origin", base]) === null) {
-    return;
+  if (sub === "pull") { // checking it would mean fetching for a command that may be refused
+    deny(`fetch, then \`git merge origin/${base}\` only on a real conflict: land.ts merges it once at landing.`);
   }
   // merge-tree exits 1 on a conflict, 0 on a clean merge; anything else (an old git) lets the merge through.
   if (Bun.spawnSync(["git", "merge-tree", "--write-tree", "HEAD", `origin/${base}`], { cwd: dir }).exitCode === 0) {

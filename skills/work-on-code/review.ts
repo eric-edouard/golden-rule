@@ -95,7 +95,7 @@ async function review() {
     try {
       mkdirSync(join(homedir(), ".agents"), { recursive: true });
       appendFileSync(join(homedir(), ".agents", "work-on-code-runs.jsonl"), `${JSON.stringify({ at: new Date().toISOString(),
-        pr: pr.url, kind: confirm ? "confirm" : "full", seconds: Math.round(performance.now() / 1000) })}\n`);
+        pr: pr.url, kind: confirm ? "confirm" : "full", seconds: Math.round(performance.now() / 1000) })}\n`, { mode: 0o600 });
     } catch {} // best effort: the verdict is already posted and kept
     if (state === "failure") process.exitCode = 1;
   } finally {

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { carries, commands, isData } from "./gate";
@@ -484,6 +484,7 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   writeFileSync(report, "Plan: matched\nVerdict: debt reduced\nNet lines: +1 / −2\n");
   expect(review().exitCode).toBe(0);
   expect(JSON.parse(readFileSync(runLog, "utf8").trim().split("\n").at(-1)!)).toMatchObject({ kind: "full", pr: prView.url });
+  expect(statSync(runLog).mode & 0o777).toBe(0o600); // private PR URLs
   expect(readFileSync(posted, "utf8")).toContain(`statuses/${head}`);
   expect(readFileSync(args, "utf8")).toContain("mcp_servers={}");
   expect(readFileSync(posted, "utf8")).toContain("state=success");
@@ -625,7 +626,9 @@ test("a branch merges its base only on a conflict; the default branch pulls free
   sh(feat, "git fetch -q");
   expect(gate(feat, "git merge -q origin/main -m sync")).toBe(2); // clean: wait for landing
   expect(gate(feat, "git merge -m origin/main other")).toBe(0); // a message is not a target
+  const fetched = readFileSync(join(feat, ".git", "FETCH_HEAD"), "utf8");
   expect(gate(feat, "git pull origin main")).toBe(2);
+  expect(readFileSync(join(feat, ".git", "FETCH_HEAD"), "utf8")).toBe(fetched); // refused without fetching
   expect(gate(feat, "git pull upstream main")).toBe(0); // another remote
   expect(gate(feat, "git pull origin nope")).toBe(0);
   const tmp = mkdtempSync(join(root, "tmp-"));

@@ -579,6 +579,9 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   expect(readFileSync(prompt, "utf8")).toContain("+resolved"); // the hand resolution
   expect(readFileSync(prompt, "utf8")).toContain("<<<<<<<"); // against git's own conflicted merge
   unlinkSync(posted);
+  const failedFull = { ...reviewedFull, state: "failure", description: reviewedFull.description.replace("debt reduced", "rework needed") };
+  expect(land(merged, [[failedFull]]).stderr.toString()).toContain("did not pass"); // never launders a failed review
+  expect(existsSync(posted)).toBe(false);
   sh(dir, `git reset -q --hard ${head}`);
   expect(land(head).stderr.toString()).toContain("merges the base"); // not a merge commit
   expect(existsSync(posted)).toBe(false);

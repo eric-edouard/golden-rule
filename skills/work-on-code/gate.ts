@@ -328,7 +328,7 @@ export function proofOf(dir: string, pr: Pr) {
   function* candidates() {
     for (let sha: string | undefined = pr.headRefOid, steps = 0; sha && steps < MAX_WALK; sha = parent.get(sha), steps++) yield sha;
   }
-  type Review = { reviewed: string; verdict: string; model: string; effort: string; baseRef: string; baseSha: string; state: string; confirm: boolean; landed: boolean };
+  type Review = { reviewed: string; verdict: string; model: string; effort: string; baseRef: string; baseSha: string; state: string; kind?: "confirm" | "land" };
   let nearestConfirm: Review | undefined;
   let confirms = 0;
   for (const reviewed of candidates()) {
@@ -340,14 +340,14 @@ export function proofOf(dir: string, pr: Pr) {
     if (!fields) throw new Error("malformed debt-verdict status");
     const [, kind, verdict = "", model = "", effort = "", baseRef = "", baseSha = ""] = fields;
     if (!VERDICTS.includes(verdict) || !EFFORTS.includes(effort)) throw new Error("unknown verdict or effort");
-    const review = { reviewed, verdict, model, effort, baseRef, baseSha, state: status.state, confirm: !!kind, landed: kind === "land " };
+    const review: Review = { reviewed, verdict, model, effort, baseRef, baseSha, state: status.state, kind: kind?.trim() as Review["kind"] };
     // A confirm (or a land review of a conflict resolution) saw only what changed since the nearest full review behind
     // it: both make the proof. Below the policy it proves nothing and uses no round: it is skipped. A land review never
-    // uses a round (only "confirm " statuses are counted).
-    if (review.confirm) {
+    // uses a round.
+    if (review.kind) {
       if (!meets(policy, review)) continue;
       nearestConfirm ??= review;
-      confirms += trusted.filter(s => s.description.startsWith("confirm ")).length; // a rerun on one commit counts too
+      if (review.kind === "confirm") confirms += trusted.filter(s => s.description.startsWith("confirm ")).length; // reruns count too
       continue;
     }
     return { ...(nearestConfirm ?? review), policy, full: review, confirms };

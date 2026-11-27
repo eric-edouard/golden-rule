@@ -63,7 +63,7 @@ if (state !== "success") {
   fail(why);
 }
 // From the full review's base: a confirm never saw what a base merge brought in (a land review did).
-const reviewedBase = proof && (proof.landed ? proof.baseSha : proof.full.baseSha);
+const reviewedBase = proof && (proof.kind === "land" ? proof.baseSha : proof.full.baseSha);
 if (reviewedBase && reviewedBase !== pushed.baseRefOid && process.env.LAND_BASE_CHECKED !== pushed.baseRefOid) {
   const range = `${reviewedBase}..${pushed.baseRefOid}`;
   const files = run(dir, ["git", "diff", "--name-only", "--no-renames", `${reviewedBase}...${head}`])?.split("\n").filter(Boolean);

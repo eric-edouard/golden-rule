@@ -499,7 +499,13 @@ function landing(dir: string, branch: string) {
   const tmp = process.env.TMPDIR ?? "/tmp";
   const repo = run(dir, ["sh", "-c", 'printf %s "$(git rev-parse --path-format=absolute --git-common-dir)" | cksum'])?.split(" ")[0];
   return !!repo && [...new Bun.Glob(`work-on-code-land-${repo}{,-*}/branch`).scanSync({ cwd: tmp, onlyFiles: true })]
-    .some((f) => readFileSync(join(tmp, f), "utf8").trim() === branch);
+    .some((f) => {
+      try {
+        return readFileSync(join(tmp, f), "utf8").trim() === branch;
+      } catch {
+        return false; // released while we looked
+      }
+    });
 }
 
 function checkBaseMerge(dir: string, args: string[]) {

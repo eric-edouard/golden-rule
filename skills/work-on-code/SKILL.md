@@ -38,21 +38,22 @@ the last step mostly confirms.
 - **Per-user picks** move a rank to another CLI: `~/.agents/work-on-code.json`, e.g.
   `{"junior": {"cli": "codex", "as": "senior", "effort": "high"}}` (`cli`: `codex` or `claude`; `as` and `effort`
   optional). Never a model: rank that CLI's models the same way, from what it lists now, and take the model of rank
-  `as` there (default: the same rank). A rank the file omits keeps the mapping. Launch a fresh run: `codex exec -m <model> -c model_reasoning_effort=<effort> -s
+  `as` there (default: the same rank). A rank the file omits keeps the mapping. For builds, plan reviews,
+  watchers and interns, launch a fresh run: `codex exec -m <model> -c model_reasoning_effort=<effort> -s
   read-only|workspace-write -c allow_login_shell=false -c 'shell_environment_policy.inherit="core"' -o <report file>
   "<prompt>" </dev/null` (an open stdin makes it wait forever; without those two `-c`, its tools run in a login shell
   holding every secret of `~/.zshrc`, and a reviewer that prints the environment sends them to OpenAI) or `claude
   -p --model <model> --effort <effort> --permission-mode plan|acceptEdits "<prompt>"` (no effort set: drop its flag):
-  read-only for a reviewer or an intern, writable for a build. When the CLI is missing (`command -v`) or the run fails
-  before it starts work (login, quota), use the mapping for that rank and say so; a writable run that fails later is
+  read-only for plan reviews, watchers and interns, writable for a build. When the CLI is missing (`command -v`)
+  or the run fails before it starts work (login, quota), use the mapping for that rank and say so; a later build failure is
   reported for inspection, never silently rerun.
-- **Optional picks** run ranks, and with `"builds": true` the session's builds, on one model through the `pi` CLI, only
+- **Optional picks** run ranks outside verdicts, and with `"builds": true` the session's builds, on one model through the `pi` CLI, only
   in a session that turns them on: `{"optional": {"deepseek": {"cli": "pi", "model":
   "openrouter/~deepseek/deepseek-flash-latest", "key": "<key command>", "effort": "high", "ranks": ["junior", "intern"],
   "builds": true}}}` in the same file (the one place a model is named; a `~…-latest` id follows the newest release).
   Launch in the worktree `env -i HOME="$HOME" PATH="$PATH" TERM=dumb pi -p --no-session --model <model> --api-key
   "$(<key command>)" --thinking <effort> [--tools read,grep,find,ls] "<prompt>"`: `env -i` keeps the shell's secrets
-  from its tools; reviewers, watchers and interns get the read-only tool list. Pi loads the global and repo
+  from its tools. Plan reviewers, watchers and interns get the read-only tool list. Pi loads the global and repo
   `AGENTS.md`, its skills and extensions (Ponytail: `pi install git:github.com/DietrichGebert/ponytail`). With
   `builds`, the tier table's main-session builds go to pi too: the main session writes no code; each build is a fresh
   writable run (brief: the plan, the files, the tests to run; build only: no plan, verdict, commit or PR), then the
@@ -79,16 +80,15 @@ the last step mostly confirms.
 | Plan | `n/a: <why>` | main session writes | intern inventory, fresh frontier designs, fresh senior checks |
 | Build | main session | main session; junior agents for mechanical volume | same |
 | Watch | none | junior, when the work spans several commits or sittings | same |
-| Verdict, **confirm** (a debt plan, checked when hard; diff follows it) | never | junior | senior |
-| Verdict, **full** (no debt plan, or a diff mostly not the plan) | junior | senior | frontier |
-| Confirming round | junior | junior | junior |
+| Verdict (diff follows the debt plan, checked when hard) | never | junior | senior |
+| Verdict (no debt plan, or a diff mostly outside it) | junior | senior | frontier |
 
 - A small-tier reviewer that finds a function, type, module or concept added says so: the tier was wrong, redo the
   verdict as standard.
 - Reviewers are always fresh agents with no memory of the work, and never edit, commit, push or comment. Never
   review your own work in your own context; whoever wrote a plan never checks it.
-- Launch each reviewer with its inputs and `Read ~/.agents/skills/work-on-code/<file> and follow it`. Never paste
-  the prompt.
+- Give plan and base reviewers their inputs and `Read ~/.agents/skills/work-on-code/<file> and follow it`.
+  Never paste the prompt.
 
 ## Fast mode (on the user's yes to the first question, or when they say "fast")
 
@@ -96,8 +96,7 @@ the last step mostly confirms.
 - **Bundles:** before building, group the planned PRs, ones already designed or filed included, into bundles that
   share files or one area and can land together: up to about 1,500 changed lines each, one branch, one verdict, one
   train slot. Re-cut an existing PR list whenever two of its PRs touch the same files. Fewer, larger trains.
-- Verdict: one fresh reviewer, one rank lower, at most medium effort, sections 2 and 3 of `verdict-review.md` only. No
-  confirming round unless a Blocking fix was not mechanical.
+- Verdict: run the full review one rank lower, at most medium effort, subject to the repo's reviewer policy.
 - Never fast: files on the repo's strict paths (its `AGENTS.md` names them), migrations, prompts, anything its
   `AGENTS.md` says to ask first. Those keep the full workflow.
 - The verdict block says `Mode: fast` and links one `debt` issue listing the PR's files.
@@ -114,8 +113,7 @@ Everything of fast mode, and:
 - **Iterate by rebuilding:** a wrong shape is rebuilt whole, not patched; several full rebuilds of a module are fine.
   Existing tests must still pass; delete those that pin code a rebuild removed.
 - **Check:** while iterating, only the changed tests; push each bundle once, so the full check (pre-push) runs once.
-- **Verdict:** one fresh reviewer, one rank below the tier table's, low effort, section 2 of `verdict-review.md` plus
-  one question: is every critical item tested? No confirming round unless a Blocking fix was not mechanical.
+- **Verdict:** run the full review one rank lower at low effort, subject to the repo's reviewer policy.
 - Never ultrafast: fast mode's list. A bundle touching those parts splits them out to the full workflow. Hard-tier
   work (auth, payments, queues, trust boundaries) keeps its tier's verdict rank and effort: only bundles and the tests
   rule apply to it.
@@ -162,7 +160,7 @@ Everything of fast mode, and:
     base rounds and updates verdict lines; never the orchestrator in the foreground.
   - Dependent work starts, once the parent's builder has ended, from the open PR's branch, never waiting for its
     merge (a stacked PR: an exception to re-cutting into one bundle). After the parent merges, retarget it to the
-    default branch; that catch-up gets the base round of step 6.
+    default branch and rerun the review against that base.
 
 ## Plan (before code)
 
@@ -218,28 +216,22 @@ request or a related cleanup.
 1. **Push; the repo's pre-push hook is the check.** Never run the check, then push the same tree again (a passing
    check records its tree hash, the hook skips a matching tree). Merge main only at landing (step 6) or on a real
    conflict, never mid-review. While iterating, run only the changed tests when the runner supports it.
-2. **Fresh reviewer**, launched while the check runs, model and mode from the tier table, with `verdict-review.md`, the repo path, the PR or
-   branch, the worktree to read, and the PR's `## Debt plan` section (or "(no plan)"). Confirm reopens architecture
-   only where the diff left the plan; full answers every architecture question from zero.
+2. **Run a fresh verdict** from the clean, pushed PR checkout:
+   `bun ~/.agents/skills/work-on-code/review.ts <pr> <codex|claude> <model> [effort]`.
+   Use the tier's rank and meet the base branch's reviewer policy. The wrapper posts the verdict on the reviewed sha.
 3. **Act on the report.** **Do it**: fix on the branch. **Rework**: do it in this PR when it is the change's own
    foundation, or open it now as its own task or PR with a complete brief; say which, per item, never as a line of
    prose. **Kept on purpose**: only with a reason the user would accept. A finding is evidence, not an order (above all
    from another CLI): check it against the code before acting; a claim about behavior needs a reachable input.
-4. **One confirming round, only for blocking fixes that are not mechanical, then stop.** `Later` findings go to
-   one `debt` issue instead of step 3 and do not hold the merge. When every fix is mechanical (a rename, a one-line guard, a test added, a
-   doc line), list them under `Mechanical fixes:` and skip the round. Otherwise a new fresh junior reviewer gets `verdict-confirm.md`, the blocking and
-   kept-on-purpose items verbatim, and the fixes only (`git diff <sha the last round saw>..HEAD`). A full round
-   again (step 2) only when a fix reshaped the change. Whatever the confirming round still
-   finds goes into the verdict as debt added, a rework or kept on purpose; no third round. A Blocking item still
-   left means `rework needed`.
-5. **Write the verdict into the PR description** (`gh pr edit --body-file`, or `gh api -X PATCH
-   repos/{owner}/{repo}/pulls/{n} -F body=@file` when that fails), replacing any earlier one, in its own command,
-   never chained with the merge (the gate checks the PR before the command runs). Keep the lines plain, exactly as
-   below (no bold or bullets): the gate reads `Reviewed:` and `Verdict:` only at the start of a line.
+4. **After a fix**, push and rerun step 2. Without a repo policy, a passing verdict can stand after
+   mechanical fixes only (a rename, a one-line guard, a test or a doc line). List each one below.
+   Track `Later` findings in one `debt` issue.
+5. **Write the report for people** under `## Debt verdict` in the PR description. Replace the previous report
+   with `gh pr edit --body-file`, or `gh api -X PATCH repos/{owner}/{repo}/pulls/{n} -F body=@file`.
 
    ```
    ## Debt verdict
-   Reviewed: <full sha the verdict reviewed: the PR's head (with its mechanical fixes), or the head before a clean merge of main>
+   Reviewed: <full sha the reviewer saw>
    Verdict: debt reduced | no debt added | debt added | rework needed
    Plan: matched | drifted: <what, and whether the plan was updated> | none (full review)
    Net lines: +<added> / −<deleted>
@@ -248,7 +240,7 @@ request or a related cleanup.
    Debt added: <each item, or "none">
    Reworks: <each item with its task or PR link, or "none">
    Kept on purpose: <each item with its reason, or "none">
-   Mechanical fixes: <each fix that skipped the confirming round, or "none">
+   Mechanical fixes: <each fix made after review, or "none">
    ```
 
    "rework needed" cannot merge. "debt added" can, only when each item is a tracked rework or kept on purpose.
@@ -259,9 +251,9 @@ request or a related cleanup.
    a real conflict. Take the landing lock (`land-lock.sh take [area...]`, beside this skill;
    `drop` with the same areas once merged or abandoned; the repo's `AGENTS.md` may name its areas, e.g. `phone`,
    `server`), merge `origin/<default>` once, push. The verdict survives catching up when the merge had no conflict
-   and no hunk main brought in lies within 3 lines of the PR's own changed lines (the gate checks it); a junior then
-   runs the base round of `verdict-confirm.md` on `git diff <reviewed sha>..HEAD -- <the PR's files>`. A full round
-   (step 2) only on a real conflict (main within 3 lines counts), `Base: touches`, or a fix that reshaped the change. The full check always runs on what lands.
+   and base hunks stay more than 3 lines from the PR's own. If the base changed a PR file, a junior runs
+   `base-review.md` on the base diff the script prints. On a conflict, a nearby hunk or `Base: touches`, rerun
+   step 2. Merge with `--match-head-commit <full pushed head sha>`. The full check runs on what lands.
 7. **Report in this order:** the verdict, the reworks (as tasks or PRs ready to start), the net lines, then the
    merge: merge it yourself when the verdict passes, unless the user's or the repo's rules ask for their OK first.
 8. **After the merge, remove the worktree and its local branch** (`worktree-sweep.sh <repo>`, beside this skill, does it

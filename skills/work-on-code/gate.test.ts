@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { carries, commands, isData } from "./gate";
@@ -76,6 +76,8 @@ test("a feature branch pushes freely, and words in arguments are not commands", 
 
 test("merges through the API are refused (gh pr merge is checked against the PR's debt verdict)", () => {
   expect(gate(MAIN, "gh api -X PUT repos/o/r/pulls/3/merge")).toBe(2);
+  expect(gate(MAIN, "gh api repos/o/r/statuses/abc -f context=debt-verdict -f state=success")).toBe(2);
+  expect(gate(MAIN, "gh api repos/o/r/statuses/abc -f context=ci/check -f state=success")).toBe(0);
 });
 
 test("data-only commits (a job's report or log) go straight to main; code or agent instructions do not", () => {
@@ -120,6 +122,7 @@ test("docs, memory and data pass anywhere; code and agent instructions do not", 
   for (const f of ["docs/build.ts", "memory/who.ts", "AGENTS.md", "docs/AGENTS.md", "prompts/task.v2.md", ".claude/rules/truth.md", "docs/agents/ui-design.md", "package.json", "src/app.ts"]) {
     expect([f, isData(f)]).toEqual([f, false]);
   }
+  expect(isData(".work-on-code.json", true)).toBe(false);
   // A data-only repository (`.data-repo` at its root): media and JSON anywhere are data; scripts and instructions are not.
   expect(["lynx/posts/rd1-a/1.png", "lynx/reviewer/rounds.json", "lynx/brand.test.ts", "lynx/AGENTS.md"].map((f) => isData(f, true))).toEqual([true, true, false, false]);
 });
@@ -289,14 +292,17 @@ test("the landing lock: one holder per repo across worktrees, only the holder dr
   const repo = join(root, "locked");
   sh(root, "git clone -q origin.git locked");
   sh(repo, "git worktree add -q ../locked-b -b b");
-  const env = { HOME: process.env.HOME, PATH: process.env.PATH, TMPDIR: root, LAND_LOCK_POLL: "0.1" };
+  // A contended take reaches sleep. End it there so contention is independent of machine speed.
+  const lockBin = mkdtempSync(join(root, "lock-bin-"));
+  writeFileSync(join(lockBin, "sleep"), "#!/bin/sh\nexit 42\n", { mode: 0o755 });
+  const env = { HOME: process.env.HOME, PATH: `${lockBin}:${process.env.PATH}`, TMPDIR: root };
   const lock = (cwd: string, op: string, ...areas: string[]) =>
-    Bun.spawnSync(["sh", LOCK, op, ...areas], { cwd, env, timeout: 1000 }).exitCode;
+    Bun.spawnSync(["sh", LOCK, op, ...areas], { cwd, env }).exitCode;
   const b = join(root, "locked-b");
   expect(lock(repo, "take")).toBe(0);
   expect(lock(repo, "take")).toBe(0); // the holder again
   expect(lock(join(root, "locked-b"), "drop")).toBe(1);
-  expect(lock(join(root, "locked-b"), "take")).not.toBe(0); // waits, killed by the timeout
+  expect(lock(b, "take")).toBe(42);
   sh(root, "touch -t 202001010000 work-on-code-land-*");
   expect(lock(join(root, "locked-b"), "take")).toBe(0); // stale: taken over
   expect(lock(join(root, "locked-b"), "drop")).toBe(0);
@@ -309,7 +315,7 @@ test("the landing lock: one holder per repo across worktrees, only the holder dr
   // Areas: different areas land in parallel; a PR spanning a held area waits; a bad name is refused.
   expect(lock(repo, "take", "server")).toBe(0);
   expect(lock(b, "take", "phone")).toBe(0);
-  expect(lock(b, "take", "server", "phone")).not.toBe(0); // waits on server, killed by the timeout
+  expect(lock(b, "take", "server", "phone")).toBe(42); // waits on server
   expect(lock(repo, "drop", "server")).toBe(0);
   expect(lock(b, "take", "server", "phone")).toBe(0); // resumes past phone, already held
   expect(lock(b, "drop", "phone", "server")).toBe(0);
@@ -320,7 +326,7 @@ test("the landing lock: one holder per repo across worktrees, only the holder dr
   expect(lock(b, "drop", "server", "phone")).toBe(1);
   expect(lock(repo, "take", "phone", "SERVER")).toBe(0);
   expect(lock(repo, "drop", "phone", "server")).toBe(0);
-});
+}, 30_000);
 
 test("the PR status hook names each PR a command pushed or edited, and nothing else", () => {
   expect(touched("cd sub && git push -u origin x", "/r")).toEqual([{ dir: "/r/sub" }]);
@@ -339,6 +345,135 @@ test("the PR status hook names each PR a command pushed or edited, and nothing e
   }
 });
 
+// Only the base policy and statuses returned by gh can authorize a code merge.
+const baseSha = "a".repeat(40);
+const headSha = "b".repeat(40);
+const ancestor = "c".repeat(40);
+const prView = {
+  baseRefName: "main", baseRefOid: baseSha, headRefName: "pr", headRefOid: headSha,
+  url: "https://github.com/o/r/pull/7", files: [{ path: "shared.ts" }], changedFiles: 1,
+  body: `## Debt verdict\nReviewed: ${headSha}\nVerdict: no debt added`,
+};
+const status = {
+  state: "success", creator: { login: "reviewer" }, context: "debt-verdict",
+  description: `no debt added | claude-opus-5-5 medium | main@${baseSha}`, id: 1, created_at: "2026-11-27T01:00:00Z",
+};
+const bin = mkdtempSync(join(root, "bin-"));
+writeFileSync(join(bin, "gh"), `#!/bin/sh
+case "$1 $2" in
+  'pr view')
+    if [ -n "$REMOTE" ]; then
+      printf '%s' "$PR_VIEW" | sed "s/REMOTE_HEAD/$(git --git-dir="$REMOTE" rev-parse pr)/g;s/REMOTE_BASE/$(git --git-dir="$REMOTE" rev-parse main)/g"
+    else
+      printf '%s' "$PR_VIEW"
+    fi;;
+  'pr merge') exit 0;;
+  'api user') echo reviewer;;
+  *git/trees/${headSha}) if [ -n "$HEAD_TREE" ]; then echo "$HEAD_TREE"; else echo "$TREE"; fi;;
+  *git/trees/*) echo "$TREE";;
+  *contents/.work-on-code.json*) [ -n "$POLICY" ] && echo "$POLICY";;
+  *commits/"$REVIEWED"/statuses*) echo "$STATUSES";;
+  *commits/*/statuses*) echo "$OTHER_STATUSES";;
+  *compare/*per_page*) echo "$REVIEWED";;
+  *compare/*) echo "$BEHIND";;
+  *statuses/*) echo "$@" > "$POSTED";;
+  *) exit 1;;
+esac
+`, { mode: 0o755 });
+function fakeGh(extra: Record<string, string> = {}) {
+  return {
+    HOME: process.env.HOME, PATH: `${bin}:${process.env.PATH}`, TMPDIR: root, PR_VIEW: JSON.stringify(prView),
+    REVIEWED: headSha, STATUSES: JSON.stringify([[status]]), OTHER_STATUSES: "[[]]", BEHIND: "0",
+    TREE: '{"truncated":false,"tree":[]}', ...extra,
+  };
+}
+
+test("only the nearest trusted verdict authorizes its pinned head", () => {
+  const pinned = `gh pr merge 7 --match-head-commit ${headSha}`;
+  const merge = (extra: Record<string, string>, command = pinned) => Bun.spawnSync(["bun", GATE], {
+    env: fakeGh(extra), stdin: new TextEncoder().encode(JSON.stringify({ cwd: FEATURE, tool_input: { command } })),
+  }).exitCode;
+  const failed = { ...status, state: "failure", description: status.description.replace("no debt added", "rework needed"), id: 2 };
+  const strict = {
+    TREE: '{"truncated":false,"tree":[{"path":".work-on-code.json","type":"blob","mode":"100644","sha":"policy"}]}',
+    POLICY: '{"reviewer":{"models":["claude-opus-5-5"],"effort":"medium","publishers":["reviewer"]}}',
+  };
+  expect(merge({})).toBe(0);
+  expect(merge(strict)).toBe(0);
+  for (const statuses of [[], [{ ...status, creator: { login: "author" } }], [failed], [status, failed]]) {
+    expect(merge({ STATUSES: JSON.stringify([statuses]) })).toBe(2);
+  }
+  expect(merge({ STATUSES: JSON.stringify([[{ ...status, description: "ok" }]]) })).toBe(2);
+  expect(merge({ ...strict, POLICY: "" })).toBe(2);
+  expect(merge({ ...strict, POLICY: "{}" })).toBe(2);
+  expect(merge({ ...strict, POLICY: strict.POLICY.replace("medium", "high") })).toBe(2);
+  expect(merge({ ...strict, POLICY: strict.POLICY.replace("claude-opus-5-5", "claude-opus") })).toBe(2);
+  expect(merge({ ...strict, POLICY: strict.POLICY.replace('["reviewer"]', '["maintainer"]') })).toBe(2);
+  expect(merge({ PR_VIEW: JSON.stringify({ ...prView, baseRefName: "other" }) })).toBe(2);
+  expect(merge({ BEHIND: "1" })).toBe(2);
+  expect(merge({}, "gh pr merge 7")).toBe(2);
+  expect(merge({}, pinned.slice(0, -1))).toBe(2);
+  const docs = { PR_VIEW: JSON.stringify({ ...prView, files: [{ path: "README.md" }] }), STATUSES: "[[]]" };
+  expect(merge(docs)).toBe(0);
+  expect(merge({ ...docs, ...strict })).toBe(0);
+  expect(merge({ ...docs, ...strict, HEAD_TREE: '{"truncated":false,"tree":[]}' })).toBe(2); // policy renamed into docs
+  expect(merge(docs, "gh pr merge 7")).toBe(2);
+  expect(merge({ REVIEWED: ancestor })).toBe(0);
+  expect(merge({ REVIEWED: ancestor, OTHER_STATUSES: JSON.stringify([[failed]]) })).toBe(2);
+  expect(merge({ ...strict, REVIEWED: ancestor })).toBe(2);
+}, 30_000);
+
+test("review.ts posts a full report's verdict on the pushed commit only", () => {
+  sh(root, "git clone -q origin.git reviewing && cd reviewing && git checkout -qb pr");
+  const dir = join(root, "reviewing");
+  const sha = (ref: string) => Bun.spawnSync(["git", "rev-parse", ref], { cwd: dir }).stdout.toString().trim();
+  const base = sha("HEAD");
+  sh(dir, "echo review > shared.ts && git add shared.ts && git -c user.name=t -c user.email=t@t commit -qm pr");
+  const head = sha("HEAD");
+  const posted = join(root, "posted");
+  const report = join(root, "report");
+  const args = join(root, "review-args");
+  writeFileSync(join(bin, "codex"), `#!/bin/sh
+printf '%s\\n' "$@" > "${args}"
+echo 'model: gpt-review' >&2
+echo 'reasoning effort: high' >&2
+cat "${report}"
+`, { mode: 0o755 });
+  writeFileSync(join(bin, "claude"), `#!/usr/bin/env bun
+const args = process.argv.slice(2);
+if (args.includes("--effort") || args[args.indexOf("--model") + 1] !== "opus") process.exit(2);
+const stop = JSON.parse(args[args.indexOf("--settings") + 1]).hooks.Stop[0].hooks[0];
+const hook = Bun.spawnSync(["sh", "-c", stop.command], { env: { ...process.env, CLAUDE_EFFORT: "medium" } });
+if (hook.exitCode !== 0) process.exit(2);
+console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", modelUsage: { "claude-opus-5-5": {} } }));
+`, { mode: 0o755 });
+  const review = (pushed = head, cli = "codex", model = "gpt-review") => Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), "7", cli, model], {
+    cwd: dir, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: pushed }), POSTED: posted }),
+  });
+  writeFileSync(report, "Plan: matched\nVerdict: debt reduced\nNet lines: +1 / −2\n");
+  expect(review().exitCode).toBe(0);
+  expect(readFileSync(posted, "utf8")).toContain(`statuses/${head}`);
+  expect(readFileSync(posted, "utf8")).toContain("state=success");
+  expect(readFileSync(posted, "utf8")).toContain(`debt reduced | gpt-review high | main@${base}`);
+  expect(readFileSync(args, "utf8")).toContain("read-only");
+  expect(review(head, "claude", "opus").exitCode).toBe(0);
+  expect(readFileSync(posted, "utf8")).toContain(`no debt added | claude-opus-5-5 medium | main@${base}`);
+  writeFileSync(report, "Verdict: rework needed\n");
+  review();
+  expect(readFileSync(posted, "utf8")).toContain("state=failure");
+  unlinkSync(posted);
+  for (const text of ["No verdict", "Verdict: looks OK", "Verdict: debt reduced\nVerdict: rework needed"]) {
+    writeFileSync(report, text);
+    expect(review().exitCode).not.toBe(0);
+    expect(existsSync(posted)).toBe(false);
+  }
+  writeFileSync(report, "Verdict: debt reduced");
+  expect(review(base).exitCode).not.toBe(0);
+  writeFileSync(join(dir, "dirty"), "unreviewed");
+  expect(review().exitCode).not.toBe(0);
+  expect(existsSync(posted)).toBe(false);
+}, 30_000);
+
 test("land.ts lands only from the PR's branch, and asks for a base round when the base changed the PR's files", () => {
   const LAND = join(import.meta.dir, "land.ts");
   const c = (cwd: string, cmd: string) => sh(cwd, `git -c user.name=t -c user.email=t@t ${cmd}`);
@@ -352,22 +487,27 @@ test("land.ts lands only from the PR's branch, and asks for a base round when th
   sh(dir, "sed -i.bak 1s/1/one/ shared.ts && rm shared.ts.bak && git add shared.ts");
   c(dir, "commit -q -m pr && git push -q origin pr");
   const reviewed = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: dir }).stdout.toString().trim();
-  // A fake gh: the PR's view; anything else prints nothing (the compare reads as behind, so the merge is refused).
-  const bin = join(root, "bin");
-  const pr = { baseRefName: "main", headRefName: "pr", headRefOid: reviewed, url: "https://github.com/o/r/pull/7", files: [{ path: "shared.ts" }], body: `## Debt verdict\nReviewed: ${reviewed}\nVerdict: no debt added` };
-  Bun.write(join(root, "pr.json"), JSON.stringify(pr));
-  sh(root, `mkdir -p bin && printf '#!/bin/sh\\n[ "$2" = view ] && cat ${join(root, "pr.json")}\\nexit 0\\n' > bin/gh && chmod +x bin/gh`);
+  const oldBase = Bun.spawnSync(["git", "rev-parse", "origin/main"], { cwd: dir }).stdout.toString().trim();
+  const env = fakeGh({
+    REMOTE: join(root, "origin.git"), REVIEWED: reviewed,
+    STATUSES: JSON.stringify([[{ ...status, description: status.description.replace(baseSha, oldBase) }]]),
+    PR_VIEW: JSON.stringify({ ...prView, headRefOid: "REMOTE_HEAD", baseRefOid: "REMOTE_BASE" }),
+  });
   const land = (cwd: string, extra: Record<string, string> = {}) =>
-    Bun.spawnSync(["bun", LAND, "7"], { cwd, env: { HOME: process.env.HOME, PATH: `${bin}:${process.env.PATH}`, TMPDIR: root, ...extra } });
+    Bun.spawnSync(["bun", LAND, "7"], { cwd, env: { ...env, ...extra } });
   expect(land(FEATURE).exitCode).toBe(1); // another branch's checkout
+  sh(dir, "sed -i.bak 1s/one/first/ shared.ts && rm shared.ts.bak && git add shared.ts");
+  c(dir, "commit -q -m mechanical && git push -q origin pr");
+  expect(land(dir).exitCode).toBe(0); // a fix on the PR alone needs no base round
   sh(base2, "sed -i.bak 10s/10/ten/ shared.ts && rm shared.ts.bak && git add shared.ts");
   c(base2, "commit -q -m far && git push -q --no-verify origin main");
   const first = land(dir);
   expect(first.exitCode).toBe(3); // the base changed the PR's file
-  const head = /LAND_BASE_CHECKED=([0-9a-f]+)/.exec(first.stderr.toString())?.[1] as string;
-  const past = land(dir, { LAND_BASE_CHECKED: head });
-  expect([past.exitCode, /debt verdict is for/.test(past.stderr.toString())]).toEqual([1, true]); // past the base round: the gate's rule, on the pushed head, cannot prove the carry (no GitHub here)
+  const base = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: base2 }).stdout.toString().trim();
+  expect(first.stderr.toString()).toContain(`git diff ${oldBase}..${base}`);
+  expect(first.stderr.toString()).toContain(`LAND_BASE_CHECKED=${base}`);
+  expect(land(dir, { LAND_BASE_CHECKED: base }).exitCode).toBe(0);
   sh(base2, "sed -i.bak 9s/9/nine/ shared.ts && rm shared.ts.bak && git add shared.ts");
   c(base2, "commit -q -m again && git push -q --no-verify origin main");
-  expect(land(dir, { LAND_BASE_CHECKED: head }).exitCode).toBe(3); // the base moved again: asked again
-});
+  expect(land(dir, { LAND_BASE_CHECKED: base }).exitCode).toBe(3); // the base moved again: asked again
+}, 30_000);

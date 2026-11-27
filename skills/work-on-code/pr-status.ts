@@ -1,13 +1,11 @@
 #!/usr/bin/env bun
 // Claude Code's PostToolUse hook (matcher Bash), registered per repo: after a command that pushed or edited a PR, it
-// shows the work-on-code gate on the PR as two commit statuses on its head (gate.md): `<prefix>/debt-verdict`, the
-// gate's rule on its debt verdict at that moment, and `<prefix>/check`, whether the repo's `bun run check` passed on
-// that tree (recorded by the pre-push hook in `<git dir>/check-passed`; only in repos with a `check` script).
+// shows whether the repo's bun run check passed on the pushed tree (recorded in <git dir>/check-passed).
 // Display only: the gate stays the PreToolUse hook. Never fails the command: every error is silent.
 //   bun pr-status.ts <prefix>   (the tool call on stdin)
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { defaults, gitCall, PR_FIELDS, type Pr, run, verdictOf, walk } from "./gate";
+import { defaults, gitCall, repoOf, run, walk } from "./gate";
 
 /** A PR a command touched: its folder, and its repo and number when the command named them (else the branch's PR). */
 type Target = { dir: string; repo?: string; number?: string };
@@ -61,26 +59,16 @@ function post(prefix: string, t: Target) {
   if (!(t.number || (branch && !defaults(top).includes(branch)))) {
     return; // no PR on the default branch or a detached head: fast and silent
   }
-  const json = run(top, ["gh", "pr", "view", ...(t.number ? [t.number] : []), "--json", `${PR_FIELDS},state`]);
+  const json = run(top, ["gh", "pr", "view", ...(t.number ? [t.number] : []), "--json", "headRefOid,url,state"]);
   if (!json) {
     return;
   }
-  const pr = JSON.parse(json) as Pr & { state: string };
-  const repo = pr.url.replace(/^https:\/\/github\.com\//, "").replace(/\/pull\/\d+$/, "");
+  const pr = JSON.parse(json) as { headRefOid: string; url: string; state: string };
+  const repo = repoOf(pr);
   // The branch's PR counts only when this checkout holds its pushed head (a push of another ref says nothing of it).
   if (pr.state !== "OPEN" || !ours(repo) || (!t.number && head !== pr.headRefOid)) {
     return;
   }
-  const status = (context: string, state: string, why: string) =>
-    run(top, [
-      "gh", "api", `repos/${repo}/statuses/${pr.headRefOid}`,
-      "-f", `state=${state}`, "-f", `context=${prefix}/${context}`,
-      "-f", `description=${why.length > 140 ? `${why.slice(0, 139)}…` : why}`, "-f", `target_url=${pr.url}`,
-    ]);
-  // This checkout is the PR's repo, as for `gh pr merge` run here; a refusal without its how-to.
-  const verdict = verdictOf(top, pr, true);
-  const why = verdict.why.replace(pr.url, "this PR");
-  status("debt-verdict", verdict.state, verdict.state === "success" ? why : (why.split(/(?<=\.) /)[0] as string));
   // The check speaks for the head only from its clean checkout, the tree the pre-push hook saw pass.
   const pkg = join(top, "package.json");
   const clean = head === pr.headRefOid && run(top, ["git", "status", "--porcelain", "--untracked-files=normal"]) === "";
@@ -90,11 +78,12 @@ function post(prefix: string, t: Target) {
   const record = resolve(top, run(top, ["git", "rev-parse", "--git-dir"]) ?? ".git", "check-passed");
   const tree = run(top, ["git", "rev-parse", `${pr.headRefOid}^{tree}`]);
   const passed = tree !== null && existsSync(record) && readFileSync(record, "utf8").trim() === tree;
-  status(
-    "check",
-    passed ? "success" : "pending",
-    passed ? "bun run check passed on this head" : "bun run check has not passed on this head (it runs before each push)"
-  );
+  run(top, [
+    "gh", "api", `repos/${repo}/statuses/${pr.headRefOid}`,
+    "-f", `state=${passed ? "success" : "pending"}`, "-f", `context=${prefix}/check`,
+    "-f", `description=${passed ? "bun run check passed on this head" : "bun run check has not passed on this head (it runs before each push)"}`,
+    "-f", `target_url=${pr.url}`,
+  ]);
 }
 
 if (import.meta.main) {

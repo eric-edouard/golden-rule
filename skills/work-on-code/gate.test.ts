@@ -554,7 +554,6 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   expect(existsSync(posted)).toBe(false);
   expect(withPolicy("gpt-mini", "medium").exitCode).toBe(0); // the two gpt-review high confirms are below it: no round used
   unlinkSync(posted);
-  expect(existsSync(posted)).toBe(false);
   sh(dir, `git reset -q --hard ${fix} && rm -r .git/work-on-code`);
   expect(confirm(fix).exitCode).not.toBe(0); // no saved report of the full review
   expect(existsSync(posted)).toBe(false);

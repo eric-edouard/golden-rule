@@ -360,7 +360,7 @@ export function verdictOf(dir: string, pr: Pr, local: boolean, proof = proofOf(d
   if (proof.state !== "success" || verdict === "rework needed") return { state: "failure", why: "the latest review did not pass" };
   if (proof.baseRef !== pr.baseRefName || full.baseRef !== pr.baseRefName) return { state: "pending", why: "the PR was retargeted; run review.ts again" };
   // The policy binds the full review and any confirm after it: a confirm judges fixes of any size (gate.md).
-  if (!meets(policy, full) || !meets(policy, proof)) {
+  if (!meets(policy, full)) { // a confirm below the policy was already skipped by proofOf
     return { state: "failure", why: "reviewer model or effort does not meet the base policy" };
   }
   if (reviewed !== pr.headRefOid && !(local && carries(dir, reviewed, pr.headRefOid, pr.baseRefOid))) {

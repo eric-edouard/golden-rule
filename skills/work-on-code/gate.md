@@ -93,6 +93,7 @@ The proof trusts the publisher. Anyone with its token, including a PR author who
 `gh api -X PATCH …/pulls/<n>` fallback) of the folder's own repo, it posts on the PR's head. A PR named by number
 or URL is shown when it belongs to the folder's repo (another repo's is skipped); the branch's PR only when the
 checkout's HEAD is its head. Tag-only, deleting and dry-run pushes are ignored.
+Statuses go only on repos the prefix owns (`mad`: `MAD-repos`): a client's own repo is theirs, even with a MAD checkout.
 
 In repos with a `check` script, it posts `<prefix>/check` from the clean, pushed head: success when
 `<git dir>/check-passed` (the tree the repo's pre-push hook last saw `bun run check` pass on, clean before and

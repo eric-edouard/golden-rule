@@ -44,6 +44,12 @@ export function touched(script: string, from: string) {
   return hits;
 }
 
+/** The GitHub owner each prefix may post on: statuses go only on repos we own, never on a client's own repo. */
+const OWNERS: Record<string, string> = { mad: "MAD-repos" };
+
+export const owned = (prefix: string, repo: string) =>
+  repo.split("/")[0]?.toLowerCase() === OWNERS[prefix]?.toLowerCase();
+
 function post(prefix: string, t: Target) {
   const top = run(t.dir, ["git", "rev-parse", "--show-toplevel"]);
   if (!top) {
@@ -66,7 +72,7 @@ function post(prefix: string, t: Target) {
   const pr = JSON.parse(json) as { headRefOid: string; url: string; state: string };
   const repo = repoOf(pr);
   // The branch's PR counts only when this checkout holds its pushed head (a push of another ref says nothing of it).
-  if (pr.state !== "OPEN" || !ours(repo) || (!t.number && head !== pr.headRefOid)) {
+  if (pr.state !== "OPEN" || !ours(repo) || !owned(prefix, repo) || (!t.number && head !== pr.headRefOid)) {
     return;
   }
   // The check speaks for the head only from its clean checkout, the tree the pre-push hook saw pass.

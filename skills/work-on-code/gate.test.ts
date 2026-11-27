@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, statSync, unlinkSync, writeFileS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { carries, commands, isData } from "./gate";
-import { touched } from "./pr-status";
+import { owned, touched } from "./pr-status";
 
 // The gate on throwaway repos: an origin whose default branch is main, a clone on main and one on a feature branch.
 // Run: bun test ~/.agents/skills/work-on-code/gate.test.ts
@@ -676,4 +676,10 @@ test("a branch merges its base only on a conflict; the default branch pulls free
   c(top, "commit -q -m y && git push -q --no-verify origin main");
   sh(feat, "git fetch -q");
   expect(gate(feat, "git merge origin/main")).toBe(0); // a real conflict
+});
+
+test("statuses post only on repos the prefix owns, never a client's", () => {
+  expect(owned("mad", "MAD-repos/trocknerheld")).toBe(true);
+  expect(owned("mad", "trocknerheld-gmbh/trocknerheld-webseite")).toBe(false);
+  expect(owned("other", "MAD-repos/hub")).toBe(false);
 });

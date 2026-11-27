@@ -541,6 +541,19 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   unlinkSync(posted);
   expect(second([[failedConfirm]]).stderr.toString()).toContain("the loop stops"); // never a third
   expect(second([[failedConfirm, { ...failedConfirm, id: 3 }]]).stderr.toString()).toContain("the loop stops"); // reruns count
+  // A policy: confirms below it use no round, and one below it is refused before it runs.
+  const policyTree = { TREE: '{"truncated":false,"tree":[{"path":".work-on-code.json","type":"blob","mode":"100644","sha":"policy"}]}',
+    POLICY: '{"reviewer":{"models":["gpt-mini"],"effort":"medium","publishers":["reviewer"]}}' };
+  const withPolicy = (model: string, effort?: string) => Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "confirm", "codex", model, ...(effort ? [effort] : [])], {
+    cwd: root, env: fakeGh({ ...policyTree, PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: big }), POSTED: posted, REVIEWED: fix,
+      STATUSES: JSON.stringify([[failedConfirm]]), OTHER_STATUSES: JSON.stringify([[failedConfirm]]), FULL: head,
+      FULL_STATUSES: JSON.stringify([[{ ...status, description: `debt added | gpt-mini high | main@${base}` }]]),
+      COMPARE: JSON.stringify({ commits: chain(big, fix, head), files: [{ filename: "shared.ts" }] }) }),
+  });
+  expect(withPolicy("gpt-mini", "low").stderr.toString()).toContain("reviewer policy"); // refused before running
+  expect(existsSync(posted)).toBe(false);
+  expect(withPolicy("gpt-mini", "medium").exitCode).toBe(0); // the two gpt-review high confirms are below it: no round used
+  unlinkSync(posted);
   expect(existsSync(posted)).toBe(false);
   sh(dir, `git reset -q --hard ${fix} && rm -r .git/work-on-code`);
   expect(confirm(fix).exitCode).not.toBe(0); // no saved report of the full review

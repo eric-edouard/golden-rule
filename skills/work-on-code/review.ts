@@ -4,7 +4,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { CODEX_ENV_FLAGS, EFFORTS, type Pr, proofOf, repoOf, reportVerdict, run } from "./gate";
+import { CODEX_ENV_FLAGS, EFFORTS, meets, type Pr, proofOf, repoOf, reportVerdict, run } from "./gate";
 
 /** Confirm rounds after a full review: with it, at most three review rounds per PR. */
 const MAX_CONFIRMS = 2;
@@ -39,7 +39,7 @@ async function review() {
   if (!mergeBase) throw new Error("cannot find the merge base; fetch the base before reviewing");
   // Each full report is kept beside the repo's objects (shared by its worktrees), for a confirm review to read.
   const reports = join(resolve(dir, run(dir, ["git", "rev-parse", "--git-common-dir"]) ?? ".git"), "work-on-code");
-  const prompt = confirm ? await confirmPrompt(dir, pr, mergeBase, reports) : await fullPrompt(dir, pr, mergeBase);
+  const prompt = confirm ? await confirmPrompt(dir, pr, mergeBase, reports, model!, effort) : await fullPrompt(dir, pr, mergeBase);
   const temp = mkdtempSync(join(tmpdir(), "debt-review-"));
   try {
     const effortFile = join(temp, "effort");
@@ -108,9 +108,13 @@ async function fullPrompt(dir: string, pr: Pr & { body: string }, mergeBase: str
 }
 
 /** The fixes since the nearest full review, from that review merged with the base the head holds (so a base merge is not shown as the PR's). */
-async function confirmPrompt(dir: string, pr: Pr, mergeBase: string, reports: string) {
+async function confirmPrompt(dir: string, pr: Pr, mergeBase: string, reports: string, model: string, effort?: string) {
   const proof = proofOf(dir, pr);
   if (!proof) throw new Error("a docs-and-data PR needs no review");
+  // Refuse before running: a confirm below the policy would prove nothing (the gate skips it).
+  if (!meets(proof.policy, { model, effort: effort ?? "" })) {
+    throw new Error(`the repo's reviewer policy needs ${proof.policy!.models.join(" or ")} at ${proof.policy!.effort} or above, named exactly with its effort`);
+  }
   if (proof.confirms >= MAX_CONFIRMS) throw new Error(`${MAX_CONFIRMS} confirm rounds already ran after the full review: the loop stops; what is still Blocking is rework needed: split it into a rework PR or ask the user`);
   const fullSha = proof.full.reviewed;
   const report = Bun.file(join(reports, `${fullSha}.md`));

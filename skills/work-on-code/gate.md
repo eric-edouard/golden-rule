@@ -76,7 +76,8 @@ review's report, which a full run keeps in `<git common dir>/work-on-code/<sha>.
 `confirm <verdict> | …`, and the gate pairs it with the nearest full status behind it: the policy's model and effort
 bind that full review and the confirm alike (a confirm judges fixes of any size), both must name the PR's base, and
 `land.ts`'s base round starts from the full review's base. At most two confirms follow a full review (three
-rounds per PR; a new full review restarts them); `review.ts` refuses a third. That limit and the saved report are checked by `review.ts` alone, like everything else the publisher posts.
+rounds per PR; a new full review restarts them); `review.ts` refuses a third. A confirm below the policy
+is skipped: it proves nothing and uses no round, and `review.ts` refuses to run one. That limit and the saved report are checked by `review.ts` alone, like everything else the publisher posts.
 The proof trusts the publisher. Anyone with its token, including a PR author who holds it, can script a status.
 
 ## The check on the PR (`pr-status.ts`)

@@ -6,7 +6,7 @@ background watcher) and before merge (`review.ts` posts a fresh reviewer's verdi
 standard, hard) picks the model for each step, so the most capable model is spent only where the shape is decided.
 
 ```bash
-npx skills add eric-edouard/golden-rule -g
+npx skills add eric-edouard/work-on-code -g
 ```
 
 Works with Claude Code, Codex and the other agents the [skills CLI](https://skills.sh) supports.

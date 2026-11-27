@@ -492,6 +492,22 @@ export function gitCall(w: string[], cwd: string) {
   return { dir, args: w.slice(i) };
 }
 
+/** A branch merges its base only at landing (land.ts) or on a real conflict: each early merge costs a full check. */
+function checkBaseMerge(dir: string, args: string[]) {
+  const [sub, ...rest] = args.filter((a) => !a.startsWith("-"));
+  const bases = defaults(dir);
+  const base = bases.find((b) => (sub === "merge" ? rest.includes(`origin/${b}`) : rest[1] === b));
+  const branch = run(dir, ["git", "branch", "--show-current"]);
+  if (!base || !branch || bases.includes(branch)) {
+    return;
+  }
+  run(dir, ["git", "fetch", "-q", "origin", base]);
+  // merge-tree exits 1 on a conflict, 0 on a clean merge; anything else (an old git) lets the merge through.
+  if (Bun.spawnSync(["git", "merge-tree", "--write-tree", "HEAD", `origin/${base}`], { cwd: dir }).exitCode === 0) {
+    deny(`origin/${base} merges into this branch without a conflict: land.ts merges it once at landing. Merge it now only on a real conflict.`);
+  }
+}
+
 function check(script: string, from: string, split = commands(script)) {
   for (const { w, cwd, stdin } of walk(script, from, split)) {
     const [cmd, ...args] = w;
@@ -500,6 +516,8 @@ function check(script: string, from: string, split = commands(script)) {
     const git = gitCall(w, cwd);
     if (git?.args[0] === "push") {
       checkPush(git.dir, git.args.slice(1));
+    } else if (git?.args[0] === "merge" || git?.args[0] === "pull") {
+      checkBaseMerge(git.dir, git.args);
     } else if (cmd === "gh") {
       const p = args.indexOf("pr");
       const before = args.slice(0, Math.max(p, 0));

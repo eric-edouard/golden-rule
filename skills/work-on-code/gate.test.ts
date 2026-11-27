@@ -607,3 +607,24 @@ test("land.ts lands only from the PR's branch, and asks for a base round when th
   const newer = JSON.stringify([[{ ...full, description: `confirm ${full.description.replace(oldBase, latest)}` }]]);
   expect(land(dir, { STATUSES: newer, REVIEWED: rev() }).exitCode).toBe(3);
 }, 30_000);
+
+test("a branch merges its base only on a conflict; the default branch pulls freely", () => {
+  const c = (cwd: string, cmd: string) => sh(cwd, `git -c user.name=t -c user.email=t@t ${cmd}`);
+  sh(root, "git init -q --bare -b main mb.git && git clone -q mb.git mb-main 2>/dev/null");
+  const top = join(root, "mb-main");
+  sh(top, "echo a > f.ts && git add f.ts");
+  c(top, "commit -q -m a && git push -q --no-verify origin main && git remote set-head origin main");
+  sh(root, "git clone -q mb.git mb-feat && cd mb-feat && git checkout -q -b feat");
+  const feat = join(root, "mb-feat");
+  sh(top, "echo b > g.ts && git add g.ts");
+  c(top, "commit -q -m b && git push -q --no-verify origin main");
+  expect(gate(feat, "git fetch -q && git merge -q origin/main -m sync")).toBe(2); // clean: wait for landing
+  expect(gate(feat, "git pull origin main")).toBe(2);
+  expect(gate(top, "git pull origin main")).toBe(0); // the default branch itself
+  expect(gate(feat, "git merge other")).toBe(0);
+  sh(feat, "echo x > f.ts && git add f.ts");
+  c(feat, "commit -q -m x");
+  sh(top, "echo y > f.ts && git add f.ts");
+  c(top, "commit -q -m y && git push -q --no-verify origin main");
+  expect(gate(feat, "git merge origin/main")).toBe(0); // a real conflict
+});

@@ -22,7 +22,8 @@ the last step mostly confirms.
 - Before bolting a feature on, ask what shape would make it *and* the existing code simpler, and restructure first.
 - Say your verdict on the foundation: **sound** (smallest clean diff), **shaky** (fix the foundation first: no
   special cases, behavior flags, duplicated logic, synced copies, timeouts hiding races) or **wrong** (propose
-  rebuilding that module; list its edge cases first). Refuse patch-on-patch; if the user insists, do it and name the debt.
+  rebuilding the module, the area or the whole project, whichever gives the feature a clean base; list its edge cases
+  first). Refuse patch-on-patch; if the user insists, do it and name the debt.
 - Planning a change that adds a function, type, module or concept: read `architecture.md` (the questions and the
   naming rules) first.
 
@@ -90,12 +91,20 @@ the last step mostly confirms.
 - Give plan and base reviewers their inputs and `Read ~/.agents/skills/work-on-code/<file> and follow it`.
   Never paste the prompt.
 
+## Bundles (every mode)
+
+Batch whatever can be batched: a builder and a reviewer who see the whole feature judge how its pieces fit; small
+slices each pay a push check, a verdict and a landing, and hide the shape.
+- Before building, group the planned PRs, ones already designed or filed included, into bundles: one PR per milestone
+  or per area, up to about 3,000 changed lines, one branch, one verdict, one train slot. Re-cut an existing PR list
+  whenever two of its PRs touch the same files or one area.
+- Push each bundle when it is ready, so the full check (pre-push) runs once; while iterating, run only the changed tests.
+- Split out only what keeps the full workflow: the repo's strict paths, migrations, prompts, and anything its
+  `AGENTS.md` says to ask first.
+
 ## Fast mode (on the user's yes to the first question, or when they say "fast")
 
 - Plan: one line under `## Debt plan`, and the bundles. No plan review, no watcher.
-- **Bundles:** before building, group the planned PRs, ones already designed or filed included, into bundles that
-  share files or one area and can land together: up to about 1,500 changed lines each, one branch, one verdict, one
-  train slot. Re-cut an existing PR list whenever two of its PRs touch the same files. Fewer, larger trains.
 - Verdict: run the full review one rank lower, at most medium effort, subject to the repo's reviewer policy.
 - Never fast: files on the repo's strict paths (its `AGENTS.md` names them), migrations, prompts, anything its
   `AGENTS.md` says to ask first. Those keep the full workflow.
@@ -105,14 +114,11 @@ the last step mostly confirms.
 ## Ultrafast mode (on the user's pick at the first question, or when they say "ultrafast", "ultra fast", "superfast" or "super fast", hyphenated or not)
 
 Everything of fast mode, and:
-- **Bigger bundles:** one PR per milestone or per area, up to about 3,000 changed lines; designed or filed PRs are
-  re-cut into those bundles before any build.
 - **Critical tests only:** a new test only for what is critical: money, a write to an outside account or to a
   customer, auth and trust boundaries, data that cannot be rebuilt (migrations, deletes). Everything else is checked
   by running it (the app, a script, one real call), never by a new test.
-- **Iterate by rebuilding:** a wrong shape is rebuilt whole, not patched; several full rebuilds of a module are fine.
-  Existing tests must still pass; delete those that pin code a rebuild removed.
-- **Check:** while iterating, only the changed tests; push each bundle once, so the full check (pre-push) runs once.
+- **Patch, file the rebuild:** a wrong shape is patched to work; when it needs a rebuild, file a `debt` issue with the
+  rebuild's brief instead of doing it in the bundle. Existing tests must still pass.
 - **Verdict:** run the full review one rank lower at low effort, subject to the repo's reviewer policy.
 - Never ultrafast: fast mode's list. A bundle touching those parts splits them out to the full workflow. Hard-tier
   work (auth, payments, queues, trust boundaries) keeps its tier's verdict rank and effort: only bundles and the tests
@@ -145,15 +151,16 @@ Everything of fast mode, and:
   - Past 300k with auto-compaction off: end the turn asking the user to run `/compact`, with the line to paste: `/compact ` plus `compact.md`'s text; once per threshold, never go on silently. Elsewhere, compact with its text.
   - A screenshot is costly: take one only to judge visuals, at reduced scale when possible; read state from the accessibility or text tree.
 - **One builder, one PR.** A builder (agent or session) builds one PR through its verdict fixes, then ends; the next
-  PR gets a fresh one with a one-page brief. A delegated builder runs at senior rank (junior for mechanical volume),
-  never frontier; its brief names the files and the tests to run, and it runs only those while iterating, with output short and files read by range. It commits
+  PR gets a fresh one with a one-page brief. A delegated builder runs at frontier rank (junior for mechanical volume): a
+  weaker builder's code costs more rounds than it saves; its brief names the files and the tests to run, and it runs only those while iterating, with output short and files read by range. It commits
   after each fix; a stalled builder (no output past its watchdog) is stopped and replaced by a finisher that starts
   from the branch's commits and never rebuilds. Work from test passes: one PR per round, and a pass reported while that
   PR is open folds its fixes into it before the verdict.
 - **Thin orchestrator** (a session running several builders): it plans, launches and relays; it acts only when woken.
-  - Each open item of the plan's checklist names its dependencies (`needs: <item>`); the plan states a parallel cap
-    (default 4 builders).
-  - On every wake, before ending the turn, it launches each item whose dependencies are met, up to the cap.
+  - Each open item of the plan's checklist names its dependencies (`needs: <item>`). Builders are light; the machine
+    is loaded by what they trigger (checks, app builds, simulators), which the repo's heavy-job slot limits. With
+    no such slot, the plan states a parallel cap (default 4 builders).
+  - On every wake, before ending the turn, it launches each item whose dependencies are met, up to any cap.
   - In Claude, a session heartbeat (`CronCreate`, every ~10 minutes) wakes it for the same refill: a wake, not a
     status poll, so agents ending together never leave ready work idle. Delete it when the checklist is done.
   - Landing (verdict step 6) is started by one background lander per repo: it runs `land.ts`, has a junior do the
@@ -183,10 +190,9 @@ Plan review: <passed | the findings and what changed>
 - **Check (hard tier only):** one fresh senior reviewer gets the plan's text and the repo path, nothing else, with `plan-review.md`.
   On a reshape, fix the plan and say what changed under `Plan review:`; a second review only when the shape changed.
 - When the PR opens, copy the section into its description: the watch and the verdict compare the code to it.
-- Split work over about 800 changed lines into several PRs, or stack them (fast: 1,500; ultrafast: 3,000).
-- **Fast or ultrafast:** the plan starts with its bundles (each bundle's items, files and line estimate). Ultrafast
-  also marks each item critical (tested) or not (checked by running), and prefers shapes a module can be rebuilt
-  into whole; the design (`plan-design.md`) is told the mode.
+- The plan starts with its bundles (each bundle's items, files and line estimate); a bundle over about 3,000 changed
+  lines splits by area or stacks. Ultrafast also marks each item critical (tested) or not (checked by running); the
+  design (`plan-design.md`) is told the mode.
 
 ## Watch (while coding)
 
@@ -215,7 +221,7 @@ request or a related cleanup.
 
 1. **Push; the repo's pre-push hook is the check.** Never run the check, then push the same tree again (a passing
    check records its tree hash, the hook skips a matching tree). Merge main only at landing (step 6) or on a real
-   conflict, never mid-review. While iterating, run only the changed tests when the runner supports it.
+   conflict, never mid-review (the gate refuses a conflict-free one). While iterating, run only the changed tests when the runner supports it.
 2. **Run a fresh verdict** on the clean, pushed PR checkout:
    `cd ~ && bun ~/.agents/skills/work-on-code/review.ts <checkout> <pr> <codex|claude> <model> [effort]` (from outside
    the checkout, so the PR's own Bun config never runs).
@@ -272,6 +278,8 @@ request or a related cleanup.
 - Small tier skips plan review and watch, never the verdict. Something merged without a verdict gets one right
   after; its findings are fixed through a new PR.
 - "Did we add debt?" is answered by the verdict, never by a self-assessment.
+- "What slows us down?" is answered by data: `python3 -I audit.py [days] [project]` (beside this skill) sums the
+  transcripts' tokens and tool time and `review.ts`'s run log.
 - **Not for docs, memory or data.** Notes, recaps, logs, memory and Markdown docs need no review: push them straight
   to `main`. Agent instructions (`AGENTS.md`, `CLAUDE.md`, skills, prompts) are functional and reviewed.
 - Large work (many PRs in flight, or several agents on one repo) needs a merge queue: when the repo has none,

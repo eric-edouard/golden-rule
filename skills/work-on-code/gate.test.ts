@@ -628,11 +628,13 @@ test("a branch merges its base only on a conflict; the default branch pulls free
   expect(gate(feat, "git pull origin main")).toBe(2);
   expect(gate(feat, "git pull upstream main")).toBe(0); // another remote
   expect(gate(feat, "git pull origin nope")).toBe(0);
-  const lock = mkdtempSync(join(root, "work-on-code-land-"));
-  writeFileSync(join(lock, "branch"), "feat\n");
-  expect(run({ cwd: feat, tool_input: { command: "git merge origin/main" } })).toBe(2); // TMPDIR not the lock's
-  expect(Bun.spawnSync(["bun", GATE], { env: { ...process.env, TMPDIR: root },
-    stdin: new TextEncoder().encode(JSON.stringify({ cwd: feat, tool_input: { command: "git merge origin/main" } })) }).exitCode).toBe(0); // landing
+  const tmp = mkdtempSync(join(root, "tmp-"));
+  const inTmp = (cmd: string) => Bun.spawnSync(["bun", GATE], { env: { ...process.env, TMPDIR: tmp },
+    stdin: new TextEncoder().encode(JSON.stringify({ cwd: feat, tool_input: { command: cmd } })) }).exitCode;
+  sh(root, `git clone -q mb.git mb-other && cd mb-other && git checkout -q -b feat && TMPDIR=${tmp} sh ${join(import.meta.dir, "land-lock.sh")} take`);
+  expect(inTmp("git merge origin/main")).toBe(2); // another repo's lock on a same-named branch
+  sh(feat, `TMPDIR=${tmp} sh ${join(import.meta.dir, "land-lock.sh")} take`);
+  expect(inTmp("git merge origin/main")).toBe(0); // this repo's landing
   expect(gate(top, "git pull origin main")).toBe(0); // the default branch itself
   expect(gate(feat, "git merge other")).toBe(0);
   sh(feat, "echo x > f.ts && git add f.ts");

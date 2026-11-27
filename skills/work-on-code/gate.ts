@@ -494,10 +494,11 @@ export function gitCall(w: string[], cwd: string) {
 }
 
 /** A branch merges its base only at landing (land.ts) or on a real conflict: each early merge costs a full check. */
-/** Whether `branch` holds a landing lock (land-lock.sh), the one time a branch merges its base. */
-function landing(branch: string) {
+/** Whether `branch` holds one of this repo's landing locks (named as land-lock.sh names them), the one time it merges its base. */
+function landing(dir: string, branch: string) {
   const tmp = process.env.TMPDIR ?? "/tmp";
-  return [...new Bun.Glob("work-on-code-land-*/branch").scanSync({ cwd: tmp, onlyFiles: true })]
+  const repo = run(dir, ["sh", "-c", 'printf %s "$(git rev-parse --path-format=absolute --git-common-dir)" | cksum'])?.split(" ")[0];
+  return !!repo && [...new Bun.Glob(`work-on-code-land-${repo}{,-*}/branch`).scanSync({ cwd: tmp, onlyFiles: true })]
     .some((f) => readFileSync(join(tmp, f), "utf8").trim() === branch);
 }
 
@@ -508,7 +509,7 @@ function checkBaseMerge(dir: string, args: string[]) {
   const bases = defaults(dir);
   const base = bases.find((b) => (sub === "merge" ? rest.includes(`origin/${b}`) : rest[0] === "origin" && rest[1] === b));
   const branch = run(dir, ["git", "branch", "--show-current"]);
-  if (!base || !branch || bases.includes(branch) || landing(branch)) {
+  if (!base || !branch || bases.includes(branch) || landing(dir, branch)) {
     return;
   }
   // A pull fetches first, so check what it would fetch; a merge takes the local ref as it is. No fetch: let it through.

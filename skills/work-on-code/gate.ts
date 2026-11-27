@@ -329,8 +329,8 @@ export function proofOf(dir: string, pr: Pr) {
   let confirms = 0;
   for (const reviewed of candidates()) {
     const pages: Status[][] = JSON.parse(api(`commits/${reviewed}/statuses?per_page=100`, "--paginate", "--slurp"));
-    const status = pages.flat().filter(s => s.context === "debt-verdict" && publishers.includes(s.creator.login))
-      .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id)[0];
+    const trusted = pages.flat().filter(s => s.context === "debt-verdict" && publishers.includes(s.creator.login));
+    const status = trusted.sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id)[0];
     if (!status) continue;
     const fields = /^(confirm )?(.*?) \| (\S+) (\S+) \| (.+)@([0-9a-f]{40})$/.exec(status.description);
     if (!fields) throw new Error("malformed debt-verdict status");
@@ -340,7 +340,7 @@ export function proofOf(dir: string, pr: Pr) {
     // A confirm review saw only the fixes since the nearest full review behind it: both make the proof.
     if (review.confirm) {
       nearestConfirm ??= review;
-      confirms++;
+      confirms += trusted.filter(s => s.description.startsWith("confirm ")).length; // a rerun on one commit counts too
       continue;
     }
     return { ...(nearestConfirm ?? review), policy, full: review, confirms };

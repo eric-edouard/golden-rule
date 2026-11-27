@@ -537,6 +537,7 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   expect(readFileSync(posted, "utf8")).toContain(`statuses/${big}`);
   unlinkSync(posted);
   expect(second([[failedConfirm]]).stderr.toString()).toContain("the loop stops"); // never a third
+  expect(second([[failedConfirm, { ...failedConfirm, id: 3 }]]).stderr.toString()).toContain("the loop stops"); // reruns count
   expect(existsSync(posted)).toBe(false);
   sh(dir, `git reset -q --hard ${fix} && rm -r .git/work-on-code`);
   expect(confirm(fix).exitCode).not.toBe(0); // no saved report of the full review

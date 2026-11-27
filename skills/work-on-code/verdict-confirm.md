@@ -10,7 +10,7 @@ for). Anything else you notice, in code the fixes did not touch or of `Later` we
 holds the merge and never asks for another round.
 
 Report each Blocking item as `fixed` or `not fixed` (file:line), then each Blocking problem the fixes add, then the
-`Later` items. Say `Reshaped: yes` only when the fixes rebuild the change's shape (a full review is then due). End
-with plain fields, one per line, exactly one `Verdict:`: `rework needed` when a Blocking item is not fixed or the
+`Later` items. Say `Reshaped: yes` only when the fixes rebuild the change's shape; the verdict is then
+`rework needed` and a full review is due. End with plain fields, one per line, exactly one `Verdict:`: `rework needed` when a Blocking item is not fixed or the
 fixes add a Blocking problem; otherwise the full report's verdict (`debt reduced`, `no debt added` or `debt added`;
 `no debt added` when it was `rework needed`). Add `Net lines: +a / −d`. Under 300 words.

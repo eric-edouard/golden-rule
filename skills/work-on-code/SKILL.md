@@ -32,7 +32,8 @@ the last step mostly confirms.
 - Before the first delegation, rank the models this harness can launch, from the session's own provider only
   (Claude: the Agent tool's `model:` values, from another CLI the aliases in `claude --help`; Codex: the visible
   models in `codex debug models`, by their `description`, never `priority`, launched with `codex exec -m <slug>`),
-  newest of each family, skipping models made for other work (vision, computer use), by capability at code:
+  newest of each family, skipping models made for other work (vision, computer use) and Haiku (Claude: Opus and Sonnet
+  only), by capability at code:
   **frontier** (the most capable) › **senior** › **junior** › **intern** (the cheapest). With two models, frontier
   and senior take the stronger, junior and intern the cheaper; with three, the middle one is senior and junior. Say
   the mapping in one line.

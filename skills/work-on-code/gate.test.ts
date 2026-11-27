@@ -386,6 +386,8 @@ esac
 // The PR's commits as GitHub's compare gives them: head, then its first parents.
 const chain = (...shas: string[]) => shas.map((sha, i) => ({ sha, parents: shas[i + 1] ? [{ sha: shas[i + 1] }] : [] }));
 const home = mkdtempSync(join(root, "home-")); // review.ts logs its runs under HOME: never the real one
+sh(home, "mkdir .agents");
+const runLog = join(home, ".agents", "work-on-code-runs.jsonl");
 function fakeGh(extra: Record<string, string> = {}, files: object[] = [{ filename: "shared.ts" }]) {
   return {
     HOME: home, PATH: `${bin}:${process.env.PATH}`, TMPDIR: root, PR_VIEW: JSON.stringify(prView),
@@ -482,6 +484,7 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   });
   writeFileSync(report, "Plan: matched\nVerdict: debt reduced\nNet lines: +1 / −2\n");
   expect(review().exitCode).toBe(0);
+  expect(JSON.parse(readFileSync(runLog, "utf8").trim().split("\n").at(-1)!)).toMatchObject({ kind: "full", pr: prView.url });
   expect(readFileSync(posted, "utf8")).toContain(`statuses/${head}`);
   expect(readFileSync(args, "utf8")).toContain("mcp_servers={}");
   expect(readFileSync(posted, "utf8")).toContain("state=success");

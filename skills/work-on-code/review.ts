@@ -112,22 +112,23 @@ async function confirmPrompt(dir: string, pr: Pr, mergeBase: string, reports: st
   const proof = proofOf(dir, pr);
   if (!proof) throw new Error("a docs-and-data PR needs no review");
   if (proof.confirm && proof.state !== "success") throw new Error("the last confirm did not pass; run a full review");
-  const full = proof.full.reviewed;
-  const report = Bun.file(join(reports, `${full}.md`));
-  if (!(await report.exists())) throw new Error(`the full review of ${full} is not on this machine; run a full review`);
-  const from = run(dir, ["git", "merge-tree", "--write-tree", full, mergeBase])?.split("\n")[0];
-  if (!from) throw new Error(`cannot merge ${full} with the base; run a full review`);
+  const fullSha = proof.full.reviewed;
+  const report = Bun.file(join(reports, `${fullSha}.md`));
+  if (!(await report.exists())) throw new Error(`the full review of ${fullSha} is not on this machine; run a full review`);
+  const from = run(dir, ["git", "merge-tree", "--write-tree", fullSha, mergeBase])?.split("\n")[0];
+  if (!from) throw new Error(`cannot merge ${fullSha} with the base; run a full review`);
   const numstat = run(dir, ["git", "diff", "--numstat", "--no-renames", from, pr.headRefOid]);
-  if (numstat === null) throw new Error(`cannot read the fixes since ${full}`);
+  if (numstat === null) throw new Error(`cannot read the fixes since ${fullSha}`);
   const lines = numstat.split("\n").filter(Boolean).reduce((n, l) => {
     const [a = "-", d = "-"] = l.split("\t");
     return n + (a === "-" || d === "-" ? Number.POSITIVE_INFINITY : Number(a) + Number(d));
   }, 0);
-  if (lines > CONFIRM_MAX) throw new Error(`the fixes since ${full} change ${lines} lines, over ${CONFIRM_MAX}; run a full review`);
+  if (lines === 0) throw new Error(`no fixes since ${fullSha}; run a full review`);
+  if (lines > CONFIRM_MAX) throw new Error(`the fixes since ${fullSha} change ${lines} lines, over ${CONFIRM_MAX}; run a full review`);
   const diff = run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", from, pr.headRefOid]);
-  if (diff === null) throw new Error(`cannot read the fixes since ${full}`);
+  if (diff === null) throw new Error(`cannot read the fixes since ${fullSha}`);
   const instructions = await Bun.file(join(import.meta.dir, "verdict-confirm.md")).text();
-  return `${instructions}\n\nEarlier full review of ${full}:\n${await report.text()}\n\nFixes since then:\n${diff}`;
+  return `${instructions}\n\nEarlier full review of ${fullSha}:\n${await report.text()}\n\nFixes since then:\n${diff}`;
 }
 
 review().catch(e => { console.error(`review: ${e.message}`); process.exitCode = 1; });

@@ -525,11 +525,21 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   expect(readFileSync(prompt, "utf8")).toContain("+fix");
   expect(readFileSync(prompt, "utf8")).not.toContain("+review"); // the reviewed change is not shown again
   unlinkSync(posted);
+  const failedConfirm = { ...status, state: "failure", description: `confirm rework needed | gpt-review high | main@${base}` };
+  expect(Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "confirm", "codex", "gpt-mini"], {
+    cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: fix }), POSTED: posted, REVIEWED: fix,
+      STATUSES: JSON.stringify([[failedConfirm]]), FULL: head, FULL_STATUSES: JSON.stringify([[status]]),
+      COMPARE: JSON.stringify({ commits: chain(fix, head), files: [{ filename: "shared.ts" }] }) }),
+  }).stderr.toString()).toContain("the last confirm did not pass"); // after a failing confirm, only a full review
+  expect(existsSync(posted)).toBe(false);
   const big = commit("seq 1 100 >> shared.ts");
   expect(confirm(big, fix).exitCode).not.toBe(0); // over the cap: a full review
   expect(existsSync(posted)).toBe(false);
   sh(dir, `git reset -q --hard ${fix} && rm -r .git/work-on-code`);
   expect(confirm(fix).exitCode).not.toBe(0); // no saved report of the full review
+  expect(existsSync(posted)).toBe(false);
+  sh(dir, `git reset -q --hard ${head} && mkdir .git/work-on-code && echo 'Verdict: debt reduced' > .git/work-on-code/${head}.md`);
+  expect(confirm(head).stderr.toString()).toContain("no fixes since"); // nothing to confirm
   expect(existsSync(posted)).toBe(false);
 }, 30_000);
 

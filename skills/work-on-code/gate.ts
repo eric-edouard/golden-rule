@@ -325,7 +325,7 @@ export function proofOf(dir: string, pr: Pr) {
     for (let sha: string | undefined = pr.headRefOid, steps = 0; sha && steps < MAX_WALK; sha = parent.get(sha), steps++) yield sha;
   }
   type Review = { reviewed: string; verdict: string; model: string; effort: string; baseRef: string; baseSha: string; state: string; confirm: boolean };
-  let nearest: Review | undefined;
+  let nearestConfirm: Review | undefined;
   for (const reviewed of candidates()) {
     const pages: Status[][] = JSON.parse(api(`commits/${reviewed}/statuses?per_page=100`, "--paginate", "--slurp"));
     const status = pages.flat().filter(s => s.context === "debt-verdict" && publishers.includes(s.creator.login))
@@ -336,12 +336,11 @@ export function proofOf(dir: string, pr: Pr) {
     const [, confirm, verdict = "", model = "", effort = "", baseRef = "", baseSha = ""] = fields;
     if (!VERDICTS.includes(verdict) || !EFFORTS.includes(effort)) throw new Error("unknown verdict or effort");
     const review = { reviewed, verdict, model, effort, baseRef, baseSha, state: status.state, confirm: !!confirm };
-    // A confirm review saw only the fixes since the nearest full review behind it: both make the proof, and the base
-    // round starts from the full review's base (the confirm never saw what a base merge brought in).
-    if (!nearest && review.confirm) nearest = review;
-    else if (!review.confirm) return { ...(nearest ?? review), baseSha: review.baseSha, policy, full: review };
+    // A confirm review saw only the fixes since the nearest full review behind it: both make the proof.
+    if (!nearestConfirm && review.confirm) nearestConfirm = review;
+    else if (!review.confirm) return { ...(nearestConfirm ?? review), policy, full: review };
   }
-  throw new Error(`${pr.url} has no trusted full debt-verdict status${nearest ? " behind its confirm" : ""}. Run review.ts on its pushed head.`);
+  throw new Error(`${pr.url} has no trusted full debt-verdict status${nearestConfirm ? " behind its confirm" : ""}. Run review.ts on its pushed head.`);
 }
 
 export function verdictOf(dir: string, pr: Pr, local: boolean, proof = proofOf(dir, pr)) {

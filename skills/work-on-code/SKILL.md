@@ -263,8 +263,10 @@ request or a related cleanup.
    `drop` with the same areas once merged or abandoned; the repo's `AGENTS.md` may name its areas, e.g. `phone`,
    `server`), merge `origin/<default>` once, push. The verdict survives catching up when the merge had no conflict
    and base hunks stay more than 3 lines from the PR's own. If the base changed a PR file, a junior runs
-   `base-review.md` on the base diff the script prints. On a conflict, a nearby hunk or `Base: touches`, rerun
-   step 2. Merge with `--match-head-commit <full pushed head sha>`. The full check runs on what lands.
+   `base-review.md` on the base diff the script prints. On a conflict, merge by hand, commit, push and run
+   `review.ts <checkout> <pr> land <cli> <model> <effort>` (junior rank; a repo policy binds it; it uses no confirm
+   round): it reviews the resolution and the base changes under the PR. Rerun step 2 only on its `rework needed`, a
+   nearby hunk or `Base: touches`. Merge with `--match-head-commit <full pushed head sha>`. The full check runs on what lands.
 7. **Report in this order:** the verdict, the reworks (as tasks or PRs ready to start), the net lines, then the
    merge: merge it yourself when the verdict passes, unless the user's or the repo's rules ask for their OK first.
 8. **After the merge, remove the worktree and its local branch** (`worktree-sweep.sh <repo>`, beside this skill, does it

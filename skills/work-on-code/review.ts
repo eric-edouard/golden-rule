@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Run a review from the pushed checkout. Only the wrapper writes the verdict status.
 // Full: the PR's whole diff. Confirm: only the fixes since the nearest full review, at most two confirms (gate.md).
-import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CODEX_ENV_FLAGS, EFFORTS, meets, type Pr, proofOf, repoOf, reportVerdict, run } from "./gate";
@@ -95,7 +95,8 @@ async function review() {
     try {
       mkdirSync(join(homedir(), ".agents"), { recursive: true });
       appendFileSync(join(homedir(), ".agents", "work-on-code-runs.jsonl"), `${JSON.stringify({ at: new Date().toISOString(),
-        pr: pr.url, kind: confirm ? "confirm" : "full", seconds: Math.round(performance.now() / 1000) })}\n`, { mode: 0o600 });
+        pr: pr.url, kind: confirm ? "confirm" : "full", seconds: Math.round(performance.now() / 1000) })}\n`);
+      chmodSync(join(homedir(), ".agents", "work-on-code-runs.jsonl"), 0o600); // private PR URLs, whoever created it
     } catch {} // best effort: the verdict is already posted and kept
     if (state === "failure") process.exitCode = 1;
   } finally {

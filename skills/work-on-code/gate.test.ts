@@ -387,6 +387,7 @@ esac
 const chain = (...shas: string[]) => shas.map((sha, i) => ({ sha, parents: shas[i + 1] ? [{ sha: shas[i + 1] }] : [] }));
 const home = mkdtempSync(join(root, "home-")); // review.ts logs its runs under HOME: never the real one
 const runLog = join(home, ".agents", "work-on-code-runs.jsonl");
+sh(home, "mkdir .agents && touch .agents/work-on-code-runs.jsonl && chmod 644 .agents/work-on-code-runs.jsonl"); // an older, readable log
 function fakeGh(extra: Record<string, string> = {}, files: object[] = [{ filename: "shared.ts" }]) {
   return {
     HOME: home, PATH: `${bin}:${process.env.PATH}`, TMPDIR: root, PR_VIEW: JSON.stringify(prView),

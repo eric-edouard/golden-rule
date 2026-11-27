@@ -5,6 +5,8 @@ have no context about the work: review the pinned base and head supplied by the 
 no PR description or earlier review beyond the plan you were given. Do not edit, commit, push or comment. Read the
 repo's AGENTS.md / CLAUDE.md, the diff, every changed file in full, their callers and callees. Skip generated files
 (lockfiles, migration snapshots, codegen output, any the AGENTS.md names) and leave them out of net lines.
+This is the PR's only full review: later rounds check just the fixes, and what they would find elsewhere is never
+Blocking. So find every Blocking item now, in one pass, not the first few.
 
 **0. Inventory.** For each new or changed function, type, predicate, query, config key and domain word the diff
 touches **that the plan does not name** (every one when there is no plan), list every place in the repo that defines

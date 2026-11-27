@@ -525,15 +525,18 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   expect(readFileSync(prompt, "utf8")).toContain("+fix");
   expect(readFileSync(prompt, "utf8")).not.toContain("+review"); // the reviewed change is not shown again
   unlinkSync(posted);
+  // Three rounds at most: a failing confirm may be followed by one more confirm, never a third.
   const failedConfirm = { ...status, state: "failure", description: `confirm rework needed | gpt-review high | main@${base}` };
-  expect(Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "confirm", "codex", "gpt-mini"], {
-    cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: fix }), POSTED: posted, REVIEWED: fix,
-      STATUSES: JSON.stringify([[failedConfirm]]), FULL: head, FULL_STATUSES: JSON.stringify([[status]]),
-      COMPARE: JSON.stringify({ commits: chain(fix, head), files: [{ filename: "shared.ts" }] }) }),
-  }).stderr.toString()).toContain("the last confirm did not pass"); // after a failing confirm, only a full review
-  expect(existsSync(posted)).toBe(false);
-  const big = commit("seq 1 100 >> shared.ts");
-  expect(confirm(big, fix).exitCode).not.toBe(0); // over the cap: a full review
+  const big = commit("seq 1 100 >> shared.ts"); // any fix size
+  const second = (headStatuses: object[][]) => Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "confirm", "codex", "gpt-mini"], {
+    cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: big }), POSTED: posted, REVIEWED: fix,
+      STATUSES: JSON.stringify([[failedConfirm]]), OTHER_STATUSES: JSON.stringify(headStatuses), FULL: head, FULL_STATUSES: JSON.stringify([[status]]),
+      COMPARE: JSON.stringify({ commits: chain(big, fix, head), files: [{ filename: "shared.ts" }] }) }),
+  });
+  expect(second([[]]).exitCode).toBe(0); // the second confirm
+  expect(readFileSync(posted, "utf8")).toContain(`statuses/${big}`);
+  unlinkSync(posted);
+  expect(second([[failedConfirm]]).stderr.toString()).toContain("the loop stops"); // never a third
   expect(existsSync(posted)).toBe(false);
   sh(dir, `git reset -q --hard ${fix} && rm -r .git/work-on-code`);
   expect(confirm(fix).exitCode).not.toBe(0); // no saved report of the full review

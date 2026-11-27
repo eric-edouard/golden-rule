@@ -326,6 +326,7 @@ export function proofOf(dir: string, pr: Pr) {
   }
   type Review = { reviewed: string; verdict: string; model: string; effort: string; baseRef: string; baseSha: string; state: string; confirm: boolean };
   let nearestConfirm: Review | undefined;
+  let confirms = 0;
   for (const reviewed of candidates()) {
     const pages: Status[][] = JSON.parse(api(`commits/${reviewed}/statuses?per_page=100`, "--paginate", "--slurp"));
     const status = pages.flat().filter(s => s.context === "debt-verdict" && publishers.includes(s.creator.login))
@@ -337,8 +338,12 @@ export function proofOf(dir: string, pr: Pr) {
     if (!VERDICTS.includes(verdict) || !EFFORTS.includes(effort)) throw new Error("unknown verdict or effort");
     const review = { reviewed, verdict, model, effort, baseRef, baseSha, state: status.state, confirm: !!confirm };
     // A confirm review saw only the fixes since the nearest full review behind it: both make the proof.
-    if (!nearestConfirm && review.confirm) nearestConfirm = review;
-    else if (!review.confirm) return { ...(nearestConfirm ?? review), policy, full: review };
+    if (review.confirm) {
+      nearestConfirm ??= review;
+      confirms++;
+      continue;
+    }
+    return { ...(nearestConfirm ?? review), policy, full: review, confirms };
   }
   throw new Error(`${pr.url} has no trusted full debt-verdict status${nearestConfirm ? " behind its confirm" : ""}. Run review.ts on its pushed head.`);
 }
@@ -353,7 +358,7 @@ export function verdictOf(dir: string, pr: Pr, local: boolean, proof = proofOf(d
     return { state: "failure", why: "reviewer model or effort does not meet the base policy" };
   }
   if (reviewed !== pr.headRefOid && !(local && carries(dir, reviewed, pr.headRefOid, pr.baseRefOid))) {
-    return { state: "pending", why: `the debt verdict is for ${reviewed}; run review.ts (confirm, for a small fix) on the new head` };
+    return { state: "pending", why: `the debt verdict is for ${reviewed}; run review.ts confirm on the new head` };
   }
   const behind = run(dir, ["gh", "api", `repos/${repoOf(pr)}/compare/${pr.baseRefOid}...${pr.headRefOid}`, "-q", ".behind_by"]);
   if (behind !== "0") return { state: "pending", why: `cannot confirm the head is up to date with ${pr.baseRefName}; run land.ts` };

@@ -148,7 +148,7 @@ async function landPrompt(dir: string, pr: Pr, model: string, effort?: string) {
   if (!ours || !theirs || more.length || run(dir, ["git", "merge-base", "--is-ancestor", theirs, pr.baseRefOid]) === null) {
     throw new Error("land reviews a head that merges the base into the PR; merge origin/<base>, commit and push first");
   }
-  if (proof.reviewed === pr.headRefOid) throw new Error("this head already has a review; a failed land review means a full review");
+  if (proof.reviewed === pr.headRefOid) throw new Error("this head already has a review: rerun nothing if it passed; after a failed land review, run a full review");
   if (proof.reviewed !== ours) throw new Error(`the commit before the merge (${ours}) has no trusted review of its own; run a confirm first`);
   // A land review never reads the earlier report: it must stand on a passing one.
   if (proof.state !== "success") throw new Error("the review before the merge did not pass; fix it with a confirm first");

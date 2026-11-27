@@ -589,7 +589,6 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
     cwd: root, env: fakeGh({ RATE: "3 1800000000", PR_VIEW: JSON.stringify({ ...prView, baseRefOid: base, headRefOid: head }), POSTED: posted }),
   }).stderr.toString()).toContain("API limit"); // no review GitHub could not record
   expect(existsSync(posted)).toBe(false);
-  expect(existsSync(posted)).toBe(false);
 }, 30_000);
 
 test("land.ts lands only from the PR's branch, and asks for a base round when the base changed the PR's files", () => {

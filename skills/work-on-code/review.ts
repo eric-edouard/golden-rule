@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 // Run a review from the pushed checkout. Only the wrapper writes the verdict status.
-// Full: the PR's whole diff. Confirm: only the fixes since the nearest full review, when they are small (gate.md).
+// Full: the PR's whole diff. Confirm: only the fixes since the nearest full review, at most two confirms (gate.md).
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CODEX_ENV_FLAGS, EFFORTS, type Pr, proofOf, repoOf, reportVerdict, run } from "./gate";
 
-/** The most lines (added plus deleted) a confirm review may judge; a binary change is over it. */
-const CONFIRM_MAX = 60;
+/** Confirm rounds after a full review: with it, at most three review rounds per PR. */
+const MAX_CONFIRMS = 2;
 
 async function review() {
   const args = process.argv.slice(2);
@@ -111,22 +111,15 @@ async function fullPrompt(dir: string, pr: Pr & { body: string }, mergeBase: str
 async function confirmPrompt(dir: string, pr: Pr, mergeBase: string, reports: string) {
   const proof = proofOf(dir, pr);
   if (!proof) throw new Error("a docs-and-data PR needs no review");
-  if (proof.confirm && proof.state !== "success") throw new Error("the last confirm did not pass; run a full review");
+  if (proof.confirms >= MAX_CONFIRMS) throw new Error(`${MAX_CONFIRMS} confirm rounds already ran after the full review: the loop stops; what is still Blocking is rework needed: split it into a rework PR or ask the user`);
   const fullSha = proof.full.reviewed;
   const report = Bun.file(join(reports, `${fullSha}.md`));
   if (!(await report.exists())) throw new Error(`the full review of ${fullSha} is not on this machine; run a full review`);
   const from = run(dir, ["git", "merge-tree", "--write-tree", fullSha, mergeBase])?.split("\n")[0];
   if (!from) throw new Error(`cannot merge ${fullSha} with the base; run a full review`);
-  const numstat = run(dir, ["git", "diff", "--numstat", "--no-renames", from, pr.headRefOid]);
-  if (numstat === null) throw new Error(`cannot read the fixes since ${fullSha}`);
-  const lines = numstat.split("\n").filter(Boolean).reduce((n, l) => {
-    const [a = "-", d = "-"] = l.split("\t");
-    return n + (a === "-" || d === "-" ? Number.POSITIVE_INFINITY : Number(a) + Number(d));
-  }, 0);
-  if (lines === 0) throw new Error(`no fixes since ${fullSha}; run a full review`);
-  if (lines > CONFIRM_MAX) throw new Error(`the fixes since ${fullSha} change ${lines} lines, over ${CONFIRM_MAX}; run a full review`);
   const diff = run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", from, pr.headRefOid]);
   if (diff === null) throw new Error(`cannot read the fixes since ${fullSha}`);
+  if (diff === "") throw new Error(`no fixes since ${fullSha}`);
   const instructions = await Bun.file(join(import.meta.dir, "verdict-confirm.md")).text();
   return `${instructions}\n\nEarlier full review of ${fullSha}:\n${await report.text()}\n\nFixes since then:\n${diff}`;
 }

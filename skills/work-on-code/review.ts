@@ -93,10 +93,13 @@ async function review() {
     }
     // One line per posted run, so an audit can time reviews (statuses are not kept long enough to read back).
     try {
+      const log = join(homedir(), ".agents", "work-on-code-runs.jsonl");
       mkdirSync(join(homedir(), ".agents"), { recursive: true });
-      appendFileSync(join(homedir(), ".agents", "work-on-code-runs.jsonl"), `${JSON.stringify({ at: new Date().toISOString(),
+      // Private PR URLs: owner-only before anything is written, whoever created the file.
+      appendFileSync(log, "", { mode: 0o600 });
+      chmodSync(log, 0o600);
+      appendFileSync(log, `${JSON.stringify({ at: new Date().toISOString(),
         pr: pr.url, kind: confirm ? "confirm" : "full", seconds: Math.round(performance.now() / 1000) })}\n`);
-      chmodSync(join(homedir(), ".agents", "work-on-code-runs.jsonl"), 0o600); // private PR URLs, whoever created it
     } catch {} // best effort: the verdict is already posted and kept
     if (state === "failure") process.exitCode = 1;
   } finally {

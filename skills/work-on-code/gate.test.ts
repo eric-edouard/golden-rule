@@ -258,31 +258,28 @@ test("as git's pre-push hook (any harness): code to main is refused, data, tags 
   expect(push("empty main")).not.toBe(0);
 }, 30_000); // real git pushes through the hook: slower than the 5 s default on a busy Mac
 
-test("a verdict carries across a clean merge of the base whose hunks stay more than 3 lines from the PR's, and nothing else", () => {
+test("a verdict carries across a base merge that is clean outside docs, and nothing else", () => {
   const repo = join(root, "carry");
   sh(root, "git init -q -b main carry");
   const c = (cmd: string) => sh(repo, cmd.replaceAll("COMMIT", "git -c user.name=t -c user.email=t@t commit -q"));
   const head = () => Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: repo }).stdout.toString().trim();
-  c("printf '1\\n2\\n3\\n4\\n5\\n' > a.ts && echo b > b.ts && git add -A && COMMIT -m one");
-  c("git checkout -q -b pr && sed -i.bak 1s/1/one/ a.ts && rm a.ts.bak && COMMIT -am pr");
+  c("printf '1\\n2\\n3\\n4\\n5\\n' > a.ts && echo b > b.ts && echo d > d.md && git add -A && COMMIT -m one");
+  c("git checkout -q -b pr && sed -i.bak 1s/1/one/ a.ts && echo pr > d.md && rm a.ts.bak && COMMIT -am pr");
   const reviewed = head();
-  // main changes another file: merged cleanly, the verdict carries
-  c("git checkout -q main && echo b2 > b.ts && COMMIT -am other && git checkout -q pr && git merge -q --no-edit main");
+  // main changes the PR's file next to its change (line 3 vs 1): merged cleanly, the verdict carries
+  c("git checkout -q main && sed -i.bak 3s/3/three/ a.ts && rm a.ts.bak && COMMIT -am near && git checkout -q pr && git merge -q --no-edit main");
   expect(carries(repo, reviewed, head(), "main")).toBe(true);
-  // a commit after the merge changes the PR: stale
+  // a commit after the merge changes the PR's code: stale
   c("echo c > c.ts && git add c.ts && COMMIT -m extra");
   expect(carries(repo, reviewed, head(), "main")).toBe(false);
-  // main changes the PR's file 4 lines from its change (line 5 vs 1): carries
-  c("git reset -q --hard HEAD~1 && git checkout -q main && sed -i.bak 5s/5/five/ a.ts && rm a.ts.bak && COMMIT -am far");
-  c("git checkout -q pr && git merge -q --no-edit main");
+  // a conflict resolved in docs alone: carries
+  c("git reset -q --hard HEAD~1 && git checkout -q main && echo main > d.md && COMMIT -am doc && git checkout -q pr");
+  c("git merge -q --no-edit main || (echo both > d.md && git add d.md && COMMIT --no-edit)");
   expect(carries(repo, reviewed, head(), "main")).toBe(true);
-  // 3 lines from it (line 4), still a clean merge: stale
-  c("git checkout -q main && sed -i.bak 4s/4/four/ a.ts && rm a.ts.bak && COMMIT -am near");
-  c("git checkout -q pr && git merge -q --no-edit main");
+  // a conflict resolved in code: stale
+  c("git checkout -q main && sed -i.bak 1s/1/uno/ a.ts && rm a.ts.bak && COMMIT -am code && git checkout -q pr");
+  c("git merge -q --no-edit main || (git checkout --ours a.ts && git add a.ts && COMMIT --no-edit)");
   expect(carries(repo, reviewed, head(), "main")).toBe(false);
-  // a mode change on the PR's file counts as the whole file, even beside a far edit: stale
-  c(`git checkout -q -b base2 ${reviewed}~1 && chmod +x a.ts && sed -i.bak 5s/5/five/ a.ts && rm a.ts.bak && COMMIT -am mode && git checkout -q -b pr2 ${reviewed} && git merge -q --no-edit base2`);
-  expect(carries(repo, reviewed, head(), "base2")).toBe(false);
   // unknown commits are a no
   expect(carries(repo, "0".repeat(40), head(), "main")).toBe(false);
 });
@@ -576,9 +573,9 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   sh(dir, "echo resolved > shared.ts && git add shared.ts && git -c user.name=t -c user.email=t@t commit -qm 'merge side'");
   const merged = sha("HEAD");
   const reviewedFull = { ...status, description: `debt reduced | gpt-review high | main@${base}` };
-  const land = (pushed: string, statuses = [[reviewedFull]]) => Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "land", "codex", "gpt-mini"], {
-    cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: side, headRefOid: pushed }), POSTED: posted,
-      REVIEWED: head, STATUSES: JSON.stringify(statuses), COMPARE: JSON.stringify({ commits: chain(pushed, head), files: [{ filename: "shared.ts" }] }) }),
+  const land = (pushed: string, statuses = [[reviewedFull]], baseSha = side, between: string[] = []) => Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "land", "codex", "gpt-mini"], {
+    cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: baseSha, headRefOid: pushed }), POSTED: posted,
+      REVIEWED: head, STATUSES: JSON.stringify(statuses), COMPARE: JSON.stringify({ commits: chain(pushed, ...between, head), files: [{ filename: "shared.ts" }] }) }),
   });
   writeFileSync(report, "Base: clean\nVerdict: no debt added");
   expect(land(merged).exitCode).toBe(0);
@@ -589,6 +586,13 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   const failedFull = { ...reviewedFull, state: "failure", description: reviewedFull.description.replace("debt reduced", "rework needed") };
   expect(land(merged, [[failedFull]]).stderr.toString()).toContain("did not pass"); // never launders a failed review
   expect(existsSync(posted)).toBe(false);
+  // Earlier clean base merges carry the review to the commit before the conflicted one.
+  const git = "git -c user.name=t -c user.email=t@t";
+  sh(dir, `git checkout -q -b up ${base} && echo o > other.ts && git add other.ts && ${git} commit -qm other && git checkout -q pr && git reset -q --hard ${head} && ${git} merge -q --no-edit up`);
+  const caught = sha("HEAD");
+  sh(dir, `git checkout -q up && echo up > shared.ts && git add shared.ts && ${git} commit -qm up && git checkout -q pr && (${git} merge -q up || true) && echo resolved > shared.ts && git add shared.ts && ${git} commit -qm 'merge up'`);
+  expect(land(sha("HEAD"), [[reviewedFull]], sha("up"), [caught]).exitCode).toBe(0);
+  unlinkSync(posted);
   sh(dir, `git reset -q --hard ${head}`);
   expect(land(head).stderr.toString()).toContain("merges the base"); // not a merge commit
   expect(Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "codex", "gpt-review"], {

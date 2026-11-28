@@ -69,8 +69,8 @@ Set a policy in `.work-on-code.json` at the repo root, for example:
 
 The gate reads the base branch's policy on GitHub. An unreadable policy blocks the merge.
 It requires an exact listed model and at least the stated effort. Publishers default to the login running the gate.
-The reviewed sha must be the head or carry across a clean base merge with the same tree and all
-base hunks more than 3 lines from the PR's hunks.
+The reviewed sha must be the head or carry across base merges: the head's tree is git's merge of the reviewed sha and
+the base it holds, outside docs.
 
 `review.ts <checkout> <pr> confirm …` reviews only the fixes since the nearest full review (`git diff` from that
 review merged with the head's base, any size), with `verdict-confirm.md` and the full

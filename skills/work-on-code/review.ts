@@ -46,6 +46,7 @@ async function review() {
   if (!mergeBase) throw new Error("cannot find the merge base; fetch the base before reviewing");
   // Each full report is kept beside the repo's objects (shared by its worktrees), for a confirm review to read.
   const reports = join(resolve(dir, run(dir, ["git", "rev-parse", "--git-common-dir"]) ?? ".git"), "work-on-code");
+  if (mode !== "land") await refuseNeedless(dir, pr, mergeBase, reports, mode);
   const prompt = mode === "land" ? await landPrompt(dir, pr, model!, effort)
     : partial ? await confirmPrompt(dir, pr, mergeBase, reports, model!, effort) : await fullPrompt(dir, pr, mergeBase);
   const temp = mkdtempSync(join(tmpdir(), "debt-review-"));
@@ -113,6 +114,25 @@ async function review() {
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
+}
+
+/** Refuses a review that would judge nothing new: only the base came in, or a second full review nobody asked for. */
+async function refuseNeedless(dir: string, pr: Pr, mergeBase: string, reports: string, mode?: string) {
+  let prior;
+  try {
+    prior = proofOf(dir, pr);
+  } catch (e) {
+    if ((e as Error).message.includes("no trusted full")) return; // the PR's first full review
+    throw e;
+  }
+  if (!prior) return;
+  if (prior.reviewed !== pr.headRefOid && carries(dir, prior.reviewed, pr.headRefOid, mergeBase)) {
+    throw new Error(`only ${pr.baseRefName} came in since the review of ${prior.reviewed}: nothing to review: land.ts carries the verdict`);
+  }
+  // A full review below the policy, or whose report is not on this machine (a confirm needs it), may be redone.
+  if (mode || process.env.REVIEW_FULL_AGAIN || !meets(prior.policy, prior.full) ||
+      !(await Bun.file(join(reports, `${prior.full.reviewed}.md`)).exists())) return;
+  throw new Error(`a full review already ran on ${prior.full.reviewed}: run review.ts <checkout> <pr> confirm … on the fixes (two at most), then bring what is still Blocking to the user. A new full review only when the user asks, a confirm said Reshaped: yes, a land review said Base: touches, or the PR was retargeted: rerun with REVIEW_FULL_AGAIN=<which one>`);
 }
 
 async function fullPrompt(dir: string, pr: Pr & { body: string }, mergeBase: string) {

@@ -5,7 +5,7 @@
 import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { CODEX_ENV_FLAGS, EFFORTS, meets, type Pr, proofOf, repoOf, reportVerdict, run } from "./gate";
+import { CODEX_ENV_FLAGS, carries, EFFORTS, mergedTree, meets, type Pr, proofOf, repoOf, reportVerdict, run } from "./gate";
 
 /** Confirm rounds after a full review: with it, at most three review rounds per PR. */
 const MAX_CONFIRMS = 2;
@@ -135,15 +135,15 @@ function partialProof(dir: string, pr: Pr, model: string, effort?: string) {
   return proof;
 }
 
-/** The fixes since the nearest full review, from that review merged with the base the head holds (so a base merge is not shown as the PR's). */
+/** The fixes since the nearest full review, from that review merged with the base the head holds (so a base merge is not shown as the PR's; a conflict's resolution is). */
 async function confirmPrompt(dir: string, pr: Pr, mergeBase: string, reports: string, model: string, effort?: string) {
   const proof = partialProof(dir, pr, model, effort);
   if (proof.confirms >= MAX_CONFIRMS) throw new Error(`${MAX_CONFIRMS} confirm rounds already ran after the full review: the loop stops; what is still Blocking is rework needed: split it into a rework PR or ask the user`);
   const fullSha = proof.full.reviewed;
   const report = Bun.file(join(reports, `${fullSha}.md`));
   if (!(await report.exists())) throw new Error(`the full review of ${fullSha} is not on this machine; run a full review`);
-  const from = run(dir, ["git", "merge-tree", "--write-tree", fullSha, mergeBase])?.split("\n")[0];
-  if (!from) throw new Error(`cannot merge ${fullSha} with the base; run a full review`);
+  const from = mergedTree(dir, fullSha, mergeBase);
+  if (!from) throw new Error(`cannot read ${fullSha}; fetch it first`);
   const diff = run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", from, pr.headRefOid]);
   if (diff === null) throw new Error(`cannot read the fixes since ${fullSha}`);
   if (diff === "") throw new Error(`no fixes since ${fullSha}`);
@@ -159,11 +159,14 @@ async function landPrompt(dir: string, pr: Pr, model: string, effort?: string) {
     throw new Error("land reviews a head that merges the base into the PR; merge origin/<base>, commit and push first");
   }
   if (proof.reviewed === pr.headRefOid) throw new Error("this head already has a review: rerun nothing if it passed; after a failed land review, run a full review");
-  if (proof.reviewed !== ours) throw new Error(`the commit before the merge (${ours}) has no trusted review of its own; run a confirm first`);
+  // Earlier clean base merges carry the review to the commit before this merge, as at landing.
+  const held = run(dir, ["git", "merge-base", ours, theirs]);
+  if (proof.reviewed !== ours && !(held && carries(dir, proof.reviewed, ours, held))) {
+    throw new Error(`the commit before the merge (${ours}) changed more than a clean base merge since its review; run a confirm first`);
+  }
   // A land review never reads the earlier report: it must stand on a passing one.
   if (proof.state !== "success") throw new Error("the review before the merge did not pass; fix it with a confirm first");
-  // git's own merge, conflict markers kept: the diff to the head is exactly the hand resolution.
-  const auto = Bun.spawnSync(["git", "merge-tree", "--write-tree", ours, theirs], { cwd: dir, stdout: "pipe" }).stdout.toString().split("\n")[0];
+  const auto = mergedTree(dir, ours, theirs);
   const resolution = auto ? run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", auto, pr.headRefOid]) : null;
   const files = run(dir, ["git", "diff", "--name-only", "--no-renames", `${proof.full.baseSha}...${ours}`])?.split("\n").filter(Boolean);
   const base = files && run(dir, ["git", "diff", "--no-ext-diff", "--no-textconv", `${proof.full.baseSha}..${theirs}`, "--", ...files]);

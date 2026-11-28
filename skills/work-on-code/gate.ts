@@ -206,53 +206,19 @@ export function checkPrePush(dir: string, remote: string, lines: string) {
   }
 }
 
-/** How close (in lines) the base's change may come to the PR's own lines and still carry the verdict. */
-const NEAR = 3;
-
-/** Each changed file of a `-U0 --no-renames` diff (keyed by its `diff --git` line) as merge-base line spans; a mode change or a file with no hunk (binary) spans everything. */
-function spansOf(diff: string) {
-  const files = new Map<string, number[][]>();
-  let spans: number[][] = [];
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("diff --git ")) {
-      spans = [];
-      files.set(line, spans);
-    }
-    if (/^(old|new|new file|deleted file) mode /.test(line)) {
-      spans.push([0, Number.POSITIVE_INFINITY]);
-    }
-    const hunk = /^@@ -(\d+)(?:,(\d+))?/.exec(line);
-    if (hunk) {
-      const start = Number(hunk[1]);
-      spans.push([start, start + Math.max(Number(hunk[2] ?? 1), 1) - 1]);
-    }
-  }
-  for (const s of files.values()) {
-    if (s.length === 0) {
-      s.push([0, Number.POSITIVE_INFINITY]);
-    }
-  }
-  return files;
-}
+/** Git's merge of `a` and `b` as a tree, conflict markers kept (so a diff to it is exactly a hand resolution); "" when git cannot merge them. */
+export const mergedTree = (dir: string, a: string, b: string) =>
+  Bun.spawnSync(["git", "merge-tree", "--write-tree", a, b], { cwd: dir, stdout: "pipe", stderr: "pipe" }).stdout.toString().split("\n")[0] ?? "";
 
 /**
- * Whether a verdict of `reviewed` still holds at `head`: `head` holds exactly `reviewed` merged cleanly with `base`
- * (the same tree), and no hunk the base brought in lies within `NEAR` lines of the PR's own changed lines (both
- * diffs count lines in the merge base). Read from local git; anything it cannot read is a no.
+ * Whether a verdict of `reviewed` still holds at `head`, which merged the base up to `base`: `head` holds exactly
+ * git's merge of `reviewed` and `base`, outside docs (a conflict resolved in docs alone carries). What the base changed
+ * under the PR's files is the landing's base round (land.ts). Read from local git; anything it cannot read is a no.
  */
 export function carries(dir: string, reviewed: string, head: string, base: string) {
-  const diff = (range: string) => run(dir, ["git", "diff", "-U0", "--inter-hunk-context=0", "--no-renames", "--no-color", "--no-ext-diff", "--no-textconv", range]);
-  const merged = run(dir, ["git", "merge-tree", "--write-tree", reviewed, base]);
-  const tree = run(dir, ["git", "rev-parse", `${head}^{tree}`]);
-  const ours = diff(`${base}...${reviewed}`);
-  const theirs = diff(`${reviewed}...${base}`);
-  if (!tree || merged?.split("\n")[0] !== tree || ours === null || theirs === null) {
-    return false;
-  }
-  const mine = spansOf(ours);
-  return [...spansOf(theirs)].every(([file, spans]) =>
-    spans.every(([a = 0, b = 0]) => !(mine.get(file) ?? []).some(([c = 0, d = 0]) => a <= d + NEAR && c <= b + NEAR))
-  );
+  const merged = mergedTree(dir, reviewed, base);
+  const resolved = merged ? run(dir, ["git", "diff", "--name-only", "--no-renames", merged, head]) : null;
+  return resolved === "" || (resolved !== null && resolved.split("\n").every(path => isData(path)));
 }
 
 /** `gh` flags that take a value, so the value is not mistaken for the PR. */
@@ -364,7 +330,9 @@ export function verdictOf(dir: string, pr: Pr, local: boolean, proof = proofOf(d
   if (!meets(policy, full)) { // a confirm below the policy was already skipped by proofOf
     return { state: "failure", why: "reviewer model or effort does not meet the base policy" };
   }
-  if (reviewed !== pr.headRefOid && !(local && carries(dir, reviewed, pr.headRefOid, pr.baseRefOid))) {
+  // Against the base the head holds: a base that moved on since is the up-to-date check below, not a stale verdict.
+  const held = run(dir, ["git", "merge-base", pr.headRefOid, pr.baseRefOid]);
+  if (reviewed !== pr.headRefOid && !(local && held && carries(dir, reviewed, pr.headRefOid, held))) {
     return { state: "pending", why: `the debt verdict is for ${reviewed}; run review.ts confirm on the new head` };
   }
   const behind = run(dir, ["gh", "api", `repos/${repoOf(pr)}/compare/${pr.baseRefOid}...${pr.headRefOid}`, "-q", ".behind_by"]);

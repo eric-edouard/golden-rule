@@ -244,8 +244,7 @@ request or a related cleanup.
    says `Reshaped: yes`, and it restarts the three rounds. A fix answers its finding and nothing more: each extra line
    is new review surface. After the second confirm the loop stops (`review.ts` refuses a third): what is still
    Blocking means `rework needed`, split out as a rework PR or brought to the user; never start a full review on your
-   own to clear it (`review.ts` refuses a second full without `REVIEW_FULL_AGAIN=<why>`, and any review when only the
-   base came in since the last one: `land.ts` carries it). List each fix below.
+   own to clear it (`review.ts` refuses that and a review of a base-only merge: see gate.md). List each fix below.
    Track `Later` findings in one `debt` issue.
 5. **Write the report for people** under `## Debt verdict` in the PR description. Replace the previous report
    with `gh pr edit --body-file`, or `gh api -X PATCH repos/{owner}/{repo}/pulls/{n} -F body=@file`.

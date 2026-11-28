@@ -596,7 +596,7 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   sh(dir, `git reset -q --hard ${head}`);
   expect(land(head).stderr.toString()).toContain("merges the base"); // not a merge commit
   // A review that judges nothing new is refused: a second full review nobody asked for, or only the base since.
-  const again = (pushed: string, extra: Record<string, string> = {}, baseSha = base) => Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "codex", "gpt-review"], {
+  const again = (pushed: string, extra: Record<string, string> = {}, baseSha = base, mode: string[] = []) => Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", ...mode, "codex", "gpt-review"], {
     cwd: root, env: fakeGh({ PR_VIEW: JSON.stringify({ ...prView, baseRefOid: baseSha, headRefOid: pushed }), POSTED: posted, REVIEWED: head,
       STATUSES: JSON.stringify([[reviewedFull]]), COMPARE: JSON.stringify({ commits: chain(pushed, head), files: [{ filename: "shared.ts" }] }), ...extra }),
   });
@@ -606,6 +606,7 @@ console.log(JSON.stringify({ is_error: false, result: "Verdict: no debt added", 
   unlinkSync(posted);
   sh(dir, `git checkout -q -b clean ${base} && echo c > clean.ts && git add clean.ts && ${git} commit -qm clean && git checkout -q pr && ${git} merge -q --no-edit clean`);
   expect(again(sha("HEAD"), { REVIEW_FULL_AGAIN: "the user asked" }, sha("clean")).stderr.toString()).toContain("only main came in");
+  expect(again(sha("HEAD"), {}, sha("clean"), ["confirm"]).stderr.toString()).toContain("only main came in");
   expect(existsSync(posted)).toBe(false);
   sh(dir, `git reset -q --hard ${head}`);
   expect(Bun.spawnSync(["bun", join(import.meta.dir, "review.ts"), dir, "7", "codex", "gpt-review"], {
